@@ -363,7 +363,7 @@ class RealNWPIngestionEngine:
 
             # Require recognized precipitation parameter identifier
             RECOGNIZED_PRECIP_PARAMS = ("APCP", "PRECIP", "RAIN", "TP", "PRATE", "FLUX", "PRECIPITATION")
-            if element and not any(p in element for p in RECOGNIZED_PRECIP_PARAMS):
+            if not element or not any(p in element for p in RECOGNIZED_PRECIP_PARAMS):
                 raise ValueError(f"Unrecognized or non-precipitation GRIB2 field '{element}'. Expected a precipitation rate parameter.")
 
             # Validate units and compute rate scaling (mm/h)

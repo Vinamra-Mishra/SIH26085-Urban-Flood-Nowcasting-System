@@ -226,3 +226,28 @@ class TestNWPAPIEndpoints:
         data = res.json()
         code = data.get("error", {}).get("code") or data.get("detail", {}).get("error", {}).get("code")
         assert code == "FORBIDDEN_PATH"
+
+    def test_grib2_empty_element_rejected(self, tmp_path: Path):
+        import rasterio
+        from rasterio.transform import from_bounds
+        from services.ingestion.grib_netcdf import RealNWPIngestionEngine
+
+        dummy_grib = tmp_path / "dummy_non_precip.grib2"
+        data = np.ones((10, 10), dtype=np.float32)
+        transform = from_bounds(88.0, 22.0, 89.0, 23.0, 10, 10)
+        with rasterio.open(
+            str(dummy_grib),
+            "w",
+            driver="GTiff",
+            height=10,
+            width=10,
+            count=1,
+            dtype=rasterio.float32,
+            crs="EPSG:4326",
+            transform=transform,
+        ) as dst:
+            dst.write(data, 1)
+
+        engine = RealNWPIngestionEngine()
+        with pytest.raises(ValueError, match="Expected a precipitation rate parameter"):
+            engine.ingest_file(dummy_grib)
