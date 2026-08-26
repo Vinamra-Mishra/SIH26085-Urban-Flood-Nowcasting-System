@@ -356,13 +356,41 @@ class RealNWPIngestionEngine:
         import rasterio
         import rasterio.warp
         with rasterio.open(str(path)) as src:
-            raw_data = src.read(1).astype(np.float32)
+            # Validate GRIB parameter metadata if tags exist
+            tags = src.tags(1) if hasattr(src, "tags") else {}
+            element = tags.get("GRIB_ELEMENT", tags.get("GRIB_SHORT_NAME", tags.get("shortName", ""))).upper()
+            unit = tags.get("GRIB_UNIT", tags.get("units", "mm/h")).lower()
+
+            # Reject non-precipitation fields (e.g. temperature, wind, pressure)
+            if element and not any(p in element for p in ("APCP", "PRECIP", "RAIN", "TP", "PRATE", "FLUX")):
+                if any(non_p in element for non_p in ("TMP", "PRES", "UGRD", "VGRD", "RH", "HGT")):
+                    raise ValueError(f"GRIB2 field '{element}' is not a precipitation product.")
+
+            # Validate units and compute scaling
+            scale_to_mmh = 1.0
+            if "kg m-2 s-1" in unit or "kg/m2/s" in unit:
+                scale_to_mmh = 3600.0  # kg/m2/s = mm/s -> mm/h
+            elif unit in ("m", "meter", "metre"):
+                raise ValueError("Accumulated precipitation in meters without interval duration is unsupported.")
+            elif unit not in ("mm/h", "mm hr-1", "kg m-2", "mm", ""):
+                if any(u in unit for u in ("k", "kelvin", "pa", "pascal", "m/s", "%")):
+                    raise ValueError(f"Unsupported GRIB2 precipitation unit: '{unit}'")
+
+            # Read with masking and explicit nodata preservation
+            raw_masked = src.read(1, masked=True)
+            src_nodata = float(src.nodata) if src.nodata is not None else -9999.0
+            dst_nodata = -9999.0
+            raw_data = np.ma.filled(raw_masked, src_nodata).astype(np.float32)
+
+            if scale_to_mmh != 1.0:
+                raw_data = np.where(raw_data != src_nodata, raw_data * scale_to_mmh, src_nodata)
+
             src_crs = src.crs or "EPSG:4326"
             src_transform = src.transform
             native_crs = str(src.crs or "EPSG:4326")
 
             target_shape = (self.target_grid.height, self.target_grid.width)
-            grid_mmh = np.zeros(target_shape, dtype=np.float32)
+            grid_mmh = np.full(target_shape, dst_nodata, dtype=np.float32)
 
             xmin, ymin, xmax, ymax = self.target_grid.bounds
             target_transform = rasterio.transform.from_bounds(
@@ -377,9 +405,11 @@ class RealNWPIngestionEngine:
                 src_crs=src_crs,
                 dst_transform=target_transform,
                 dst_crs=self.target_grid.crs_wkt_or_epsg,
+                src_nodata=src_nodata,
+                dst_nodata=dst_nodata,
                 resampling=rasterio.warp.Resampling.bilinear,
             )
-            grid_mmh = np.nan_to_num(np.maximum(grid_mmh, 0.0), nan=0.0)
+            grid_mmh = np.where((grid_mmh == dst_nodata) | np.isnan(grid_mmh) | (grid_mmh < 0.0), 0.0, grid_mmh)
 
         provenance = SourceProvenance(
             source_name="NCMRWF/IMD GRIB2 Regional NWP Model",

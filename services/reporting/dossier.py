@@ -464,6 +464,9 @@ class PDFDossierCompiler:
             ["Underground Conduit Water Storage", f"{dossier.mass_balance.subsurface_conduit_storage_m3:,.1f}", "S_1D"],
             ["Global Mass Balance Residual Error", res_str, err_str],
         ]
+        row5_bg = colors.HexColor("#e8f5e9") if dossier.mass_balance.certified_continuity_pass else colors.HexColor("#fbe9e7")
+        row5_fg = colors.HexColor("#1b5e20") if dossier.mass_balance.certified_continuity_pass else colors.HexColor("#c62828")
+
         mass_table = Table(mass_data, colWidths=[200, 140, 180])
         mass_table.setStyle(TableStyle([
             ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1a568c")),
@@ -471,8 +474,8 @@ class PDFDossierCompiler:
             ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
             ("BACKGROUND", (0, 1), (-1, -1), colors.HexColor("#ffffff")),
             ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#d0dbe5")),
-            ("BACKGROUND", (0, 5), (-1, 5), colors.HexColor("#e8f5e9")),
-            ("TEXTCOLOR", (0, 5), (-1, 5), colors.HexColor("#1b5e20")),
+            ("BACKGROUND", (0, 5), (-1, 5), row5_bg),
+            ("TEXTCOLOR", (0, 5), (-1, 5), row5_fg),
             ("FONTNAME", (0, 5), (-1, 5), "Helvetica-Bold"),
             ("TOPPADDING", (0, 0), (-1, -1), 3),
             ("BOTTOMPADDING", (0, 0), (-1, -1), 3),

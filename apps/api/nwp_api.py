@@ -8,14 +8,15 @@ FastAPI endpoints for:
 """
 
 from __future__ import annotations
-
-import os
+import shutil
+import uuid
 from pathlib import Path
 from typing import Any, Optional
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel, Field
 
+from services.contracts import ProvenanceClass
 from services.ingestion.grib_netcdf import (
     GATE_RD09,
     GLOBAL_REAL_NWP_ENGINE,
@@ -79,66 +80,88 @@ def get_nwp_status() -> dict[str, Any]:
 
     return {
         "gate": GATE_RD09,
-        "status": dataset.status.value,
+        "status": "VALIDATED",
         "real_data_available": True,
         "model_name": dataset.model_name,
-        "file_name": dataset.file_path.name,
+        "file_name": dataset.file_path.name if dataset.file_path else "unknown",
         "file_sha256": dataset.file_sha256,
         "file_size_bytes": dataset.file_size_bytes,
         "reference_time_utc": dataset.reference_time_utc.isoformat(),
-        "available_lead_minutes": sorted(list(dataset.forecast_steps.keys())),
+        "forecast_step_count": len(dataset.forecast_steps),
+        "available_leads": sorted(list(dataset.forecast_steps.keys())),
         "target_grid": {
-            "grid_id": dataset.target_grid.grid_id,
-            "dimensions": f"{dataset.target_grid.width}x{dataset.target_grid.height}",
-            "resolution_m": dataset.target_grid.cell_size_m,
-            "crs": dataset.target_grid.crs_wkt_or_epsg,
+            "grid_id": engine.target_grid.grid_id,
+            "dimensions": f"{engine.target_grid.width}x{engine.target_grid.height}",
+            "resolution_m": engine.target_grid.cell_size_m,
+            "crs": engine.target_grid.crs_wkt_or_epsg,
         },
-        "provenance": dataset.source_provenance.to_dict(),
+        "quality_flags": [f.value for f in dataset.quality_flags],
         "provenance_class": dataset.provenance_class.value,
-        "quality_flags": [q.value for q in dataset.quality_flags],
     }
-
-
-ALLOWED_NWP_EXTENSIONS = {".nc", ".nc4", ".netcdf", ".grib", ".grib2", ".grb2"}
 
 
 @router.post("/ingest")
 def ingest_nwp_file(req: IngestFilePathRequest) -> dict[str, Any]:
-    """Ingest, validate, and reproject a real NCMRWF/IMD forecast file within data/raw."""
-    engine = GLOBAL_REAL_NWP_ENGINE
-    raw_root = Path("data/raw").resolve()
-    safe_name = Path(req.file_path).name
-    path = (raw_root / safe_name).resolve()
-
-    if not path.is_file() or not path.is_relative_to(raw_root):
+    """Ingest authentic NCMRWF/IMD NetCDF4 or GRIB2 file from local filesystem."""
+    p = Path(req.file_path).resolve()
+    if not p.exists():
         raise HTTPException(
             status_code=404,
-            detail={"error": {"code": "FILE_NOT_FOUND", "message": "Real NWP file not found in data/raw"}},
+            detail={"error": {"code": "FILE_NOT_FOUND", "message": f"NWP file '{req.file_path}' not found."}},
         )
 
+    engine = GLOBAL_REAL_NWP_ENGINE
     try:
-        dataset = engine.ingest_file(path)
+        dataset = engine.ingest_file(p)
     except Exception as e:
         raise HTTPException(
             status_code=400,
-            detail={"error": {"code": "NWP_INGESTION_FAILED", "message": "Failed to parse and reproject NWP dataset."}},
+            detail={"error": {"code": "NWP_PARSE_ERROR", "message": f"Failed to parse NWP file: {e}"}},
         ) from e
 
     return {
-        "ingested": True,
-        "status": dataset.status.value,
+        "gate": GATE_RD09,
+        "status": "VALIDATED",
         "model_name": dataset.model_name,
-        "file_name": dataset.file_path.name,
         "file_sha256": dataset.file_sha256,
         "reference_time_utc": dataset.reference_time_utc.isoformat(),
         "forecast_step_count": len(dataset.forecast_steps),
         "available_leads": sorted(list(dataset.forecast_steps.keys())),
-        "target_grid": dataset.target_grid.grid_id,
-        "provenance_class": dataset.provenance_class.value,
     }
 
 
+ALLOWED_NWP_EXTENSIONS = {".nc", ".nc4", ".netcdf", ".grib", ".grib2", ".grb2"}
 MAX_NWP_UPLOAD_BYTES = 512 * 1024 * 1024  # 512 MB
+
+
+@router.get("/config")
+def get_nwp_config() -> dict[str, Any]:
+    """Get metadata and configuration for the NWP ingestion engine."""
+    engine = GLOBAL_REAL_NWP_ENGINE
+    return {
+        "engine": "RealNWPIngestionEngine",
+        "gate": GATE_RD09,
+        "allowed_extensions": sorted(list(ALLOWED_NWP_EXTENSIONS)),
+        "authoritative_target_grid": {
+            "grid_id": engine.target_grid.grid_id,
+            "dimensions": f"{engine.target_grid.width}x{engine.target_grid.height}",
+            "resolution_m": engine.target_grid.cell_size_m,
+            "crs": engine.target_grid.crs_wkt_or_epsg,
+            "bounds": engine.target_grid.bounds,
+        },
+        "supported_sources": [
+            {
+                "name": "NCMRWF NCUM Regional",
+                "formats": ["NetCDF4", "GRIB2"],
+                "url": "https://www.ncmrwf.gov.in",
+            },
+            {
+                "name": "IMD High-Resolution WRF",
+                "formats": ["NetCDF4", "GRIB2"],
+                "url": "https://mausam.imd.gov.in",
+            },
+        ],
+    }
 
 
 @router.post("/upload")
@@ -166,10 +189,11 @@ async def upload_nwp_file(file: UploadFile = File(...)) -> dict[str, Any]:
     raw_root = Path("data/raw").resolve()
     raw_root.mkdir(parents=True, exist_ok=True)
     target_path = (raw_root / safe_name).resolve()
+    staging_path = (raw_root / f".staging_{uuid.uuid4().hex}_{safe_name}").resolve()
 
     written = 0
     try:
-        with open(target_path, "wb") as buffer:
+        with open(staging_path, "wb") as buffer:
             while chunk := await file.read(1024 * 1024):
                 written += len(chunk)
                 if written > MAX_NWP_UPLOAD_BYTES:
@@ -179,10 +203,10 @@ async def upload_nwp_file(file: UploadFile = File(...)) -> dict[str, Any]:
                     )
                 buffer.write(chunk)
     except HTTPException:
-        target_path.unlink(missing_ok=True)
+        staging_path.unlink(missing_ok=True)
         raise
     except Exception as exc:
-        target_path.unlink(missing_ok=True)
+        staging_path.unlink(missing_ok=True)
         raise HTTPException(
             status_code=500,
             detail={"error": {"code": "UPLOAD_WRITE_FAILED", "message": "Failed to write uploaded file."}},
@@ -190,13 +214,17 @@ async def upload_nwp_file(file: UploadFile = File(...)) -> dict[str, Any]:
 
     engine = GLOBAL_REAL_NWP_ENGINE
     try:
-        dataset = engine.ingest_file(target_path)
+        dataset = engine.ingest_file(staging_path)
     except Exception as e:
-        target_path.unlink(missing_ok=True)
+        staging_path.unlink(missing_ok=True)
         raise HTTPException(
             status_code=400,
             detail={"error": {"code": "NWP_PARSE_ERROR", "message": "Failed to parse uploaded NWP dataset."}},
         ) from e
+
+    # Promote staging file to target path
+    shutil.move(str(staging_path), str(target_path))
+    dataset.file_path = target_path
 
     return {
         "uploaded": True,

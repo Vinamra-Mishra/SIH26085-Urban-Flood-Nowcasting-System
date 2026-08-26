@@ -202,3 +202,19 @@ class TestNWPAPIEndpoints:
         assert "statistics" in data
         assert data["lead_minutes"] == 45
         assert data["weights"]["w_radar"] > 0.0
+        assert "provenance_class" in data
+
+    def test_nwp_upload_invalid_preserves_target_file(self, tmp_path: Path):
+        client = TestClient(app)
+        # Upload corrupted .nc file
+        res = client.post(
+            "/api/v1/nwp/upload",
+            files={"file": ("test_corrupt.nc", b"CORRUPTED_NON_NETCDF_DATA", "application/x-netcdf")}
+        )
+        assert res.status_code == 400
+        data = res.json()
+        code = data.get("error", {}).get("code") or data.get("detail", {}).get("error", {}).get("code")
+        assert code == "NWP_PARSE_ERROR"
+        # Staging file was cleaned up and target path was not created
+        target_path = Path("data/raw/test_corrupt.nc")
+        assert not target_path.exists()
