@@ -361,20 +361,31 @@ class RealNWPIngestionEngine:
             element = tags.get("GRIB_ELEMENT", tags.get("GRIB_SHORT_NAME", tags.get("shortName", ""))).upper()
             unit = tags.get("GRIB_UNIT", tags.get("units", "mm/h")).lower()
 
-            # Reject non-precipitation fields (e.g. temperature, wind, pressure)
-            if element and not any(p in element for p in ("APCP", "PRECIP", "RAIN", "TP", "PRATE", "FLUX")):
-                if any(non_p in element for non_p in ("TMP", "PRES", "UGRD", "VGRD", "RH", "HGT")):
-                    raise ValueError(f"GRIB2 field '{element}' is not a precipitation product.")
+            # Require recognized precipitation parameter identifier
+            RECOGNIZED_PRECIP_PARAMS = ("APCP", "PRECIP", "RAIN", "TP", "PRATE", "FLUX", "PRECIPITATION")
+            if element and not any(p in element for p in RECOGNIZED_PRECIP_PARAMS):
+                raise ValueError(f"Unrecognized or non-precipitation GRIB2 field '{element}'. Expected a precipitation rate parameter.")
 
-            # Validate units and compute scaling
+            # Validate units and compute rate scaling (mm/h)
             scale_to_mmh = 1.0
-            if "kg m-2 s-1" in unit or "kg/m2/s" in unit:
-                scale_to_mmh = 3600.0  # kg/m2/s = mm/s -> mm/h
-            elif unit in ("m", "meter", "metre"):
-                raise ValueError("Accumulated precipitation in meters without interval duration is unsupported.")
-            elif unit not in ("mm/h", "mm hr-1", "kg m-2", "mm", ""):
-                if any(u in unit for u in ("k", "kelvin", "pa", "pascal", "m/s", "%")):
-                    raise ValueError(f"Unsupported GRIB2 precipitation unit: '{unit}'")
+            if "kg m-2 s-1" in unit or "kg/m2/s" in unit or "mm/s" in unit:
+                scale_to_mmh = 3600.0  # kg/m2/s = mm/s -> 3600 mm/h
+            elif "kg m-2 h-1" in unit or "kg/m2/h" in unit or "mm/h" in unit or "mm hr-1" in unit or "mm/hr" in unit:
+                scale_to_mmh = 1.0
+            elif unit in ("mm", "kg m-2", "m", "meter", "metre"):
+                # Accumulation units require validated interval duration metadata
+                interval_hours_str = tags.get("GRIB_INTERVAL_HOURS", tags.get("GRIB_STEP_RANGE", ""))
+                try:
+                    interval_hours = float(interval_hours_str) if interval_hours_str else None
+                except ValueError:
+                    interval_hours = None
+                if interval_hours and interval_hours > 0:
+                    scale_mult = 1000.0 if unit in ("m", "meter", "metre") else 1.0
+                    scale_to_mmh = scale_mult / interval_hours
+                else:
+                    raise ValueError(f"Accumulated precipitation unit '{unit}' without valid interval duration metadata cannot be converted to rate mm/h.")
+            elif unit != "":
+                raise ValueError(f"Unsupported or non-precipitation GRIB2 unit '{unit}'. Expected precipitation rate units (e.g. mm/h or kg m-2 s-1).")
 
             # Read with masking and explicit nodata preservation
             raw_masked = src.read(1, masked=True)

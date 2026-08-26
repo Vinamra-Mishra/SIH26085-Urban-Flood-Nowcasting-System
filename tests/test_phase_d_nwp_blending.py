@@ -218,3 +218,11 @@ class TestNWPAPIEndpoints:
         # Staging file was cleaned up and target path was not created
         target_path = Path("data/raw/test_corrupt.nc")
         assert not target_path.exists()
+
+    def test_nwp_ingest_path_traversal_forbidden(self):
+        client = TestClient(app)
+        res = client.post("/api/v1/nwp/ingest", json={"file_path": "../../windows/system32/cmd.exe"})
+        assert res.status_code == 403
+        data = res.json()
+        code = data.get("error", {}).get("code") or data.get("detail", {}).get("error", {}).get("code")
+        assert code == "FORBIDDEN_PATH"

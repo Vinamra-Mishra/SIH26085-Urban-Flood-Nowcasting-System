@@ -102,12 +102,23 @@ def get_nwp_status() -> dict[str, Any]:
 
 @router.post("/ingest")
 def ingest_nwp_file(req: IngestFilePathRequest) -> dict[str, Any]:
-    """Ingest authentic NCMRWF/IMD NetCDF4 or GRIB2 file from local filesystem."""
-    p = Path(req.file_path).resolve()
-    if not p.exists():
+    """Ingest authentic NCMRWF/IMD NetCDF4 or GRIB2 file from managed data directory."""
+    raw_root = RealNWPIngestionEngine.CANONICAL_RAW_DIR.resolve()
+    target = Path(req.file_path)
+    p = (raw_root / target).resolve() if not target.is_absolute() else target.resolve()
+
+    try:
+        p.relative_to(raw_root)
+    except ValueError:
+        raise HTTPException(
+            status_code=403,
+            detail={"error": {"code": "FORBIDDEN_PATH", "message": "Access outside managed raw data directory is forbidden."}},
+        )
+
+    if not p.is_file():
         raise HTTPException(
             status_code=404,
-            detail={"error": {"code": "FILE_NOT_FOUND", "message": f"NWP file '{req.file_path}' not found."}},
+            detail={"error": {"code": "FILE_NOT_FOUND", "message": f"NWP file '{p.name}' not found in managed data directory."}},
         )
 
     engine = GLOBAL_REAL_NWP_ENGINE
