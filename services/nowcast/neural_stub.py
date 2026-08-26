@@ -157,12 +157,18 @@ class NeuralNowcastEngine:
             pred_tensor = self._model(tensor_in)
             pred_np = pred_tensor.squeeze().cpu().numpy()
 
+        if pred_np.ndim != 2 or pred_np.shape != observation.rate_mmh.shape:
+            return self._advection_generator.generate(observation, vectors=vectors)
+
+        pred_np = np.nan_to_num(np.maximum(pred_np, 0.0), nan=0.0, posinf=0.0, neginf=0.0)
+
         # Build records from neural outputs
         records = []
         obs_fp = observation.fingerprint()
         for lead_min in self._config.lead_times_minutes:
             valid_time = observation.observation_time + timedelta(minutes=lead_min)
-            field_data = pred_np.copy() if lead_min > 0 else observation.rate_mmh.copy()
+            decay = float(np.exp(-lead_min / 90.0)) if lead_min > 0 else 1.0
+            field_data = (pred_np * decay).copy() if lead_min > 0 else observation.rate_mmh.copy()
             rec = NowcastRecord(
                 initialization_time=observation.observation_time,
                 valid_time=valid_time,

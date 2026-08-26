@@ -204,9 +204,9 @@ def compile_dossier_from_scenario(scenario_id: str = "S4", lead_minutes: int = 1
     snap = next((s for s in res_dict.get("snapshot_inventory", [])
                  if s.get("lead_minutes") == lead_minutes), {})
     max_d = float(snap.get("max_depth_m", np.max(depth_arr) if depth_arr.size > 0 else 0.61))
-    inundated_area = float(snap.get("inundated_area_m2", 3492900.0))
-    surf_stor = float(snap.get("total_flood_volume_m3", frame_dict.get("drainage", {}).get("surface_storage_m3", 420000.0)))
-    inundated_fraction = float(snap.get("inundated_fraction", 0.216))
+    inundated_area = float(snap.get("flooded_area_m2", snap.get("inundated_area_m2", 3492900.0)))
+    surf_stor = float(snap.get("total_flood_volume_m3", snap.get("surface_storage_m3", frame_dict.get("drainage", {}).get("surface_storage_m3", 420000.0))))
+    inundated_fraction = float(snap.get("inundated_fraction", (inundated_area / 16170000.0) if inundated_area else 0.216))
 
     # Impassable roads
     impassable_roads = [imp.get("road_id", "") for imp in road_impacts if imp.get("classification") == "IMPASSABLE"]
@@ -224,12 +224,13 @@ def compile_dossier_from_scenario(scenario_id: str = "S4", lead_minutes: int = 1
 
     # Mass balance values
     ml = res_dict.get("mass_ledger", {})
-    tot_inflow = float(ml.get("cumulative_rainfall_m3", 1450000.0))
-    tot_outflow = float(ml.get("cumulative_drainage_m3", 980000.0))
+    tot_inflow = float(ml.get("rainfall_input_m3", ml.get("cumulative_rainfall_m3", 1450000.0)))
+    tot_outflow = float(ml.get("drainage_outfall_m3", ml.get("cumulative_drainage_m3", 980000.0)))
     sub_stor = float(tot_inflow - tot_outflow - surf_stor)
+    has_res = "relative_residual" in ml
     mass_err = float(ml.get("relative_residual", 0.0001))
     rel_err_pct = abs(mass_err) * 100.0
-    continuity_pass = rel_err_pct < 0.05
+    continuity_pass = bool(has_res and rel_err_pct < 0.05)
 
     weights = compute_blending_weights(lead_minutes)
 

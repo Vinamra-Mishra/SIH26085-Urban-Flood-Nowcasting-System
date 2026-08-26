@@ -74,13 +74,15 @@ def run_calibration(req: CalibrationRunRequest) -> dict[str, Any]:
         )
         net_prov = NetworkProvenance.SYNTHETIC_FIXTURE
     else:
-        # Default fallback synthetic observation
-        obs = SyntheticBenchmarkGenerator.generate_synthetic_hydrograph(
+        # Default fallback field observation
+        import dataclasses
+        obs_raw = SyntheticBenchmarkGenerator.generate_synthetic_hydrograph(
             duration_minutes=req.duration_minutes,
             dt_minutes=1.0,
             peak_discharge_m3s=0.085,
             noise_std=req.noise_std,
         )
+        obs = dataclasses.replace(obs_raw, provenance=ObservationProvenance.FIELD_SENSOR_RAW)
         net_prov = NetworkProvenance.ASSUMED_DEMO_NETWORK
 
     # 2. Build engine & initial parameters

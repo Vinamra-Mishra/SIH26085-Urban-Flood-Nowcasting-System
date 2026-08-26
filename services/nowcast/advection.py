@@ -161,27 +161,21 @@ def semi_lagrangian_extrapolate(
     y_src = y_dst - (v_arr * dt_s) / cell_size_m
 
     # Bilinear interpolation
-    x0 = np.floor(x_src).astype(int)
-    x1 = x0 + 1
-    y0 = np.floor(y_src).astype(int)
-    y1 = y0 + 1
+    x_src_cl = np.clip(x_src, 0.0, float(w - 1))
+    y_src_cl = np.clip(y_src, 0.0, float(h - 1))
 
-    # Weights
-    wx = x_src - x0
-    wy = y_src - y0
+    x0 = np.floor(x_src_cl).astype(int)
+    y0 = np.floor(y_src_cl).astype(int)
+    x1 = np.minimum(x0 + 1, w - 1)
+    y1 = np.minimum(y0 + 1, h - 1)
 
-    # Bounds clipping for index lookup
-    valid_mask = (x0 >= 0) & (x1 < w) & (y0 >= 0) & (y1 < h)
-    
-    x0_cl = np.clip(x0, 0, w - 1)
-    x1_cl = np.clip(x1, 0, w - 1)
-    y0_cl = np.clip(y0, 0, h - 1)
-    y1_cl = np.clip(y1, 0, h - 1)
+    wx = x_src_cl - x0
+    wy = y_src_cl - y0
 
-    val_00 = arr[y0_cl, x0_cl]
-    val_01 = arr[y0_cl, x1_cl]
-    val_10 = arr[y1_cl, x0_cl]
-    val_11 = arr[y1_cl, x1_cl]
+    val_00 = arr[y0, x0]
+    val_01 = arr[y0, x1]
+    val_10 = arr[y1, x0]
+    val_11 = arr[y1, x1]
 
     interpolated = (
         (1.0 - wx) * (1.0 - wy) * val_00
@@ -189,9 +183,6 @@ def semi_lagrangian_extrapolate(
         + (1.0 - wx) * wy * val_10
         + wx * wy * val_11
     )
-
-    # Zero out coordinates that originated outside the observation domain
-    interpolated = np.where(valid_mask, interpolated, 0.0)
     interpolated = np.nan_to_num(np.maximum(interpolated, 0.0), nan=0.0, posinf=0.0, neginf=0.0)
 
     # Apply exponential convective decay if configured

@@ -68,24 +68,60 @@ class RealNWPRainfallProvider(RainfallProvider):
     def dataset(self) -> RealNWPDataset | None:
         return self._dataset
 
-    def status(self) -> ProviderStatus:
-        has_data = self._dataset is not None and bool(self._dataset.forecast_steps)
-        return ProviderStatus(
-            provider_id=self._provider_id,
-            source_name=self._source_name,
+    def fetch_latest(self) -> Optional[RainfallObservation]:
+        """Return the latest available NWP initial step observation."""
+        if self._dataset is None or not self._dataset.forecast_steps:
+            return None
+        step_0 = self._dataset.get_step(0) or next(iter(self._dataset.forecast_steps.values()))
+        ref_t = self._dataset.reference_time_utc
+        from datetime import timedelta
+        return RainfallObservation(
+            observation_time=ref_t,
+            valid_from=ref_t,
+            valid_to=ref_t + timedelta(minutes=15),
+            rate_mmh=step_0.precip_rate_mmh,
             source_type=self._source_type,
-            health=ProviderHealth.ONLINE if has_data else ProviderHealth.OFFLINE,
-            frame_count=len(self._dataset.forecast_steps) if self._dataset else 0,
-            latest_observation_time=self._dataset.reference_time_utc if self._dataset else None,
+            source_name=self._source_name,
+            source_provider_id=self._provider_id,
             spatial_reference=self._target_grid.crs_wkt_or_epsg,
             spatial_resolution_m=self._target_grid.cell_size_m,
-            grid_shape=(self._target_grid.height, self._target_grid.width),
+            width=self._target_grid.width,
+            height=self._target_grid.height,
+            quality_flags=("NWP_FORECAST",),
+            metadata={"model_name": self._dataset.model_name, "file_sha256": self._dataset.file_sha256},
+        )
+
+    def fetch_observation(self, observation_time: Optional[datetime] = None) -> Optional[RainfallObservation]:
+        """Return NWP observation corresponding to the requested time."""
+        return self.fetch_latest()
+
+    def health(self) -> ProviderHealth:
+        """Current health status of this provider."""
+        has_data = self._dataset is not None and bool(self._dataset.forecast_steps)
+        return ProviderHealth(
+            provider_id=self._provider_id,
+            status=ProviderStatus.HEALTHY if has_data else ProviderStatus.UNAVAILABLE,
+            source_type=self._source_type,
+            last_observation_time=self._dataset.reference_time_utc if self._dataset else None,
+            message="Operational NCMRWF/IMD NWP dataset loaded" if has_data else "No valid NWP dataset ingested",
             metadata={
                 "model_name": self._dataset.model_name if self._dataset else None,
                 "file_sha256": self._dataset.file_sha256 if self._dataset else None,
-                "provenance": self._dataset.source_provenance.to_dict() if self._dataset else None,
+                "available_leads": list(self._dataset.forecast_steps.keys()) if self._dataset else [],
             },
         )
+
+    def metadata(self) -> dict[str, Any]:
+        """Provider metadata and capabilities."""
+        return {
+            "provider_id": self._provider_id,
+            "source_name": self._source_name,
+            "source_type": self._source_type.value,
+            "has_dataset": self._dataset is not None,
+            "model_name": self._dataset.model_name if self._dataset else None,
+            "grid_id": self._target_grid.grid_id,
+            "resolution_m": self._target_grid.cell_size_m,
+        }
 
     def get_forecast_grid(self, lead_minutes: int) -> np.ndarray | None:
         """Retrieve 2D precipitation matrix at lead time t."""

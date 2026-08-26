@@ -638,7 +638,7 @@ def nowcast_projection_summary(config_id: str) -> dict[str, Any]:
 
 
 @app.get("/api/v1/projections/nowcast/{config_id}/frame")
-def nowcast_projection_frame(config_id: str, lead: int = Query(..., ge=0, le=60)) -> dict[str, Any]:
+def nowcast_projection_frame(config_id: str, lead: int = Query(..., ge=0, le=180)) -> dict[str, Any]:
     _require_projection_config(config_id)
     _require_projection_lead(lead)
     try:
@@ -648,7 +648,7 @@ def nowcast_projection_frame(config_id: str, lead: int = Query(..., ge=0, le=60)
 
 
 @app.get("/api/v1/projections/nowcast/{config_id}/rainfall")
-def nowcast_projection_rainfall(config_id: str, lead: int = Query(..., ge=0, le=60)) -> dict[str, Any]:
+def nowcast_projection_rainfall(config_id: str, lead: int = Query(..., ge=0, le=180)) -> dict[str, Any]:
     _require_projection_config(config_id)
     _require_projection_lead(lead)
     try:
@@ -658,7 +658,7 @@ def nowcast_projection_rainfall(config_id: str, lead: int = Query(..., ge=0, le=
 
 
 @app.get("/api/v1/projections/nowcast/{config_id}/flood")
-def nowcast_projection_flood(config_id: str, lead: int = Query(..., ge=0, le=60)) -> dict[str, Any]:
+def nowcast_projection_flood(config_id: str, lead: int = Query(..., ge=0, le=180)) -> dict[str, Any]:
     _require_projection_config(config_id)
     _require_projection_lead(lead)
     try:
@@ -668,7 +668,7 @@ def nowcast_projection_flood(config_id: str, lead: int = Query(..., ge=0, le=60)
 
 
 @app.get("/api/v1/projections/nowcast/{config_id}/road-impact")
-def nowcast_projection_road_impact(config_id: str, lead: int = Query(..., ge=0, le=60)) -> dict[str, Any]:
+def nowcast_projection_road_impact(config_id: str, lead: int = Query(..., ge=0, le=180)) -> dict[str, Any]:
     _require_projection_config(config_id)
     _require_projection_lead(lead)
     try:

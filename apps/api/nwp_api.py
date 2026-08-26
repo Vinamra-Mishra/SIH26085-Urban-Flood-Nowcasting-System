@@ -99,15 +99,21 @@ def get_nwp_status() -> dict[str, Any]:
     }
 
 
+ALLOWED_NWP_EXTENSIONS = {".nc", ".nc4", ".netcdf", ".grib", ".grib2", ".grb2"}
+
+
 @router.post("/ingest")
 def ingest_nwp_file(req: IngestFilePathRequest) -> dict[str, Any]:
-    """Ingest, validate, and reproject a real NCMRWF/IMD forecast file."""
+    """Ingest, validate, and reproject a real NCMRWF/IMD forecast file within data/raw."""
     engine = GLOBAL_REAL_NWP_ENGINE
-    path = Path(req.file_path)
-    if not path.exists():
+    raw_root = Path("data/raw").resolve()
+    safe_name = Path(req.file_path).name
+    path = (raw_root / safe_name).resolve()
+
+    if not path.is_file() or not path.is_relative_to(raw_root):
         raise HTTPException(
             status_code=404,
-            detail={"error": {"code": "FILE_NOT_FOUND", "message": f"Real NWP file not found at {path}"}},
+            detail={"error": {"code": "FILE_NOT_FOUND", "message": "Real NWP file not found in data/raw"}},
         )
 
     try:
@@ -115,8 +121,8 @@ def ingest_nwp_file(req: IngestFilePathRequest) -> dict[str, Any]:
     except Exception as e:
         raise HTTPException(
             status_code=400,
-            detail={"error": {"code": "NWP_INGESTION_FAILED", "message": str(e)}},
-        )
+            detail={"error": {"code": "NWP_INGESTION_FAILED", "message": "Failed to parse and reproject NWP dataset."}},
+        ) from e
 
     return {
         "ingested": True,
@@ -134,13 +140,33 @@ def ingest_nwp_file(req: IngestFilePathRequest) -> dict[str, Any]:
 
 @router.post("/upload")
 async def upload_nwp_file(file: UploadFile = File(...)) -> dict[str, Any]:
-    """Upload and ingest an authentic NCMRWF/IMD NetCDF4 (.nc) or GRIB2 (.grib2) file."""
-    os.makedirs("data/raw", exist_ok=True)
-    target_path = Path("data/raw") / file.filename
+    """Upload and ingest an authentic NCMRWF/IMD NetCDF4 (.nc) or GRIB2 (.grib2) file safely."""
+    if not file.filename:
+        raise HTTPException(
+            status_code=400,
+            detail={"error": {"code": "INVALID_FILENAME", "message": "Uploaded file must have a valid filename."}},
+        )
 
-    content = await file.read()
-    with open(target_path, "wb") as f:
-        f.write(content)
+    safe_name = Path(file.filename).name
+    ext = Path(safe_name).suffix.lower()
+    if ext not in ALLOWED_NWP_EXTENSIONS:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "error": {
+                    "code": "UNSUPPORTED_FILE_TYPE",
+                    "message": f"Unsupported file extension '{ext}'. Allowed: {sorted(list(ALLOWED_NWP_EXTENSIONS))}",
+                }
+            },
+        )
+
+    raw_root = Path("data/raw").resolve()
+    raw_root.mkdir(parents=True, exist_ok=True)
+    target_path = (raw_root / safe_name).resolve()
+
+    import shutil
+    with open(target_path, "wb") as buffer:
+        shutil.copyfileobj(file.file, buffer)
 
     engine = GLOBAL_REAL_NWP_ENGINE
     try:
@@ -148,12 +174,12 @@ async def upload_nwp_file(file: UploadFile = File(...)) -> dict[str, Any]:
     except Exception as e:
         raise HTTPException(
             status_code=400,
-            detail={"error": {"code": "NWP_PARSE_ERROR", "message": f"Failed to parse uploaded NWP file: {e}"}},
-        )
+            detail={"error": {"code": "NWP_PARSE_ERROR", "message": "Failed to parse uploaded NWP dataset."}},
+        ) from e
 
     return {
         "uploaded": True,
-        "file_name": file.filename,
+        "file_name": safe_name,
         "saved_path": str(target_path),
         "model_name": dataset.model_name,
         "file_sha256": dataset.file_sha256,

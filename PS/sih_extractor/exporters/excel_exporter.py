@@ -98,7 +98,10 @@ def export_to_excel(statements: List[ProblemStatement], output_path: str) -> str
             ]
             
             for c_idx, val in enumerate(row_data, start=1):
-                cell = ws.cell(row=r_idx, column=c_idx, value=val)
+                clean_val = val
+                if isinstance(clean_val, str) and clean_val.startswith(("=", "@", "+", "-")) and len(clean_val) > 1:
+                    clean_val = f"'{clean_val}"
+                cell = ws.cell(row=r_idx, column=c_idx, value=clean_val)
                 cell.font = regular_font
                 cell.border = thin_border
                 cell.alignment = columns[c_idx - 1][2]

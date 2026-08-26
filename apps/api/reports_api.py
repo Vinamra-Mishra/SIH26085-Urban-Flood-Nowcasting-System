@@ -84,10 +84,18 @@ def download_dossier_pdf(report_id: str, download: bool = Query(default=False)) 
     else:
         # Fallback compilation if ID encodes scenario-lead e.g. UFNS-DOSSIER-...-S4-110
         parts = clean_id.split("-")
-        scen = parts[-2] if len(parts) >= 2 and parts[-2] in ["S1", "S2", "S3", "S4"] else "S4"
-        lead = int(parts[-1]) if len(parts) >= 1 and parts[-1].isdigit() else 110
-        dossier = compile_dossier_from_scenario(scen, lead)
-        DOSSIER_REGISTRY[clean_id] = dossier
+        if len(parts) >= 2 and parts[-2] in ["S1", "S2", "S3", "S4"] and parts[-1].isdigit():
+            scen = parts[-2]
+            lead = max(0, min(180, int(parts[-1])))
+            dossier = compile_dossier_from_scenario(scen, lead)
+            if len(DOSSIER_REGISTRY) >= 100:
+                DOSSIER_REGISTRY.pop(next(iter(DOSSIER_REGISTRY)))
+            DOSSIER_REGISTRY[clean_id] = dossier
+        else:
+            raise HTTPException(
+                status_code=404,
+                detail={"error": {"code": "DOSSIER_NOT_FOUND", "message": f"Dossier '{clean_id}' not found. Call POST /api/v1/reports/generate first."}},
+            )
 
     compiler = GLOBAL_DOSSIER_COMPILER
     pdf_bytes = compiler.compile_pdf(dossier)
@@ -107,14 +115,22 @@ def download_dossier_pdf(report_id: str, download: bool = Query(default=False)) 
 def get_dossier_json(report_id: str) -> dict[str, Any]:
     """Retrieve structured JSON representation of an incident dossier."""
     clean_id = report_id.replace(".pdf", "")
-    if clean_id not in DOSSIER_REGISTRY:
-        parts = clean_id.split("-")
-        scen = parts[-2] if len(parts) >= 2 and parts[-2] in ["S1", "S2", "S3", "S4"] else "S4"
-        lead = int(parts[-1]) if len(parts) >= 1 and parts[-1].isdigit() else 110
-        dossier = compile_dossier_from_scenario(scen, lead)
-        DOSSIER_REGISTRY[clean_id] = dossier
-    else:
+    if clean_id in DOSSIER_REGISTRY:
         dossier = DOSSIER_REGISTRY[clean_id]
+    else:
+        parts = clean_id.split("-")
+        if len(parts) >= 2 and parts[-2] in ["S1", "S2", "S3", "S4"] and parts[-1].isdigit():
+            scen = parts[-2]
+            lead = max(0, min(180, int(parts[-1])))
+            dossier = compile_dossier_from_scenario(scen, lead)
+            if len(DOSSIER_REGISTRY) >= 100:
+                DOSSIER_REGISTRY.pop(next(iter(DOSSIER_REGISTRY)))
+            DOSSIER_REGISTRY[clean_id] = dossier
+        else:
+            raise HTTPException(
+                status_code=404,
+                detail={"error": {"code": "DOSSIER_NOT_FOUND", "message": f"Dossier '{clean_id}' not found. Call POST /api/v1/reports/generate first."}},
+            )
 
     return {
         "dossier_id": dossier.dossier_id,

@@ -114,8 +114,8 @@ class InterventionOptimizer:
 
         # Calculate Avoided Losses
         d = sim_res.deltas
-        area_red = float(d.get("inundated_area_reduction_m2", 0.0))
-        vol_red = float(d.get("flood_volume_reduction_m3", 0.0))
+        area_red = float(d.get("area_reduction_m2", d.get("inundated_area_reduction_m2", 0.0)))
+        vol_red = float(d.get("volume_reduction_m3", d.get("flood_volume_reduction_m3", 0.0)))
         reopened = int(d.get("reopened_roads_count", 0))
         depth_pct = float(d.get("depth_reduction_pct", 0.0))
         area_pct = float(d.get("area_reduction_pct", 0.0))
@@ -124,7 +124,7 @@ class InterventionOptimizer:
             area_reduction_m2=area_red,
             volume_reduction_m3=vol_red,
             reopened_roads_count=reopened,
-            protected_assets_count=max(1, reopened),
+            protected_assets_count=reopened,
         )
 
         capex = costs["total_capex_inr"]

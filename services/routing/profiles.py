@@ -35,6 +35,7 @@ class VehicleProfile:
         return depth_m <= self.max_depth_m
 
     def to_dict(self) -> dict[str, Any]:
+        """Convert vehicle profile configuration to dictionary."""
         return asdict(self)
 
 
@@ -82,7 +83,11 @@ VEHICLE_PROFILES: dict[str, VehicleProfile] = {
 }
 
 
-def get_profile(profile_id: str) -> VehicleProfile:
-    """Lookup vehicle profile by ID (case-insensitive) with default fallback to LIGHT_VEHICLE."""
-    clean_id = (profile_id or "LIGHT_VEHICLE").upper()
-    return VEHICLE_PROFILES.get(clean_id, VEHICLE_PROFILES["LIGHT_VEHICLE"])
+def get_profile(profile_id: Optional[str] = None) -> VehicleProfile:
+    """Lookup vehicle profile by ID (case-insensitive). Defaults to LIGHT_VEHICLE if omitted."""
+    if not profile_id or not profile_id.strip():
+        return VEHICLE_PROFILES["LIGHT_VEHICLE"]
+    clean_id = profile_id.strip().upper()
+    if clean_id not in VEHICLE_PROFILES:
+        raise ValueError(f"Unknown vehicle profile '{profile_id}'. Allowed: {list(VEHICLE_PROFILES.keys())}")
+    return VEHICLE_PROFILES[clean_id]

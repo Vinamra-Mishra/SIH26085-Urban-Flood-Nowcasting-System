@@ -79,11 +79,6 @@ def attempt_download(
                 tmp.unlink()
             except OSError:
                 pass
-        if dest.exists():
-            try:
-                dest.unlink()
-            except OSError:
-                pass
         return AcquisitionAttempt(
             source_name=source_name,
             url=url,

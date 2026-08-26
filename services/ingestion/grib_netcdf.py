@@ -303,9 +303,20 @@ class RealNWPIngestionEngine:
             elif precip_raw.ndim == 3:
                 # Multiple time steps [time, lat, lon]
                 n_steps = precip_raw.shape[0]
+                from datetime import timedelta
+                time_vals = ds.variables["time"][:] if "time" in ds.variables else np.arange(n_steps) * 15.0
+                time_units = getattr(ds.variables["time"], "units", "") if "time" in ds.variables else ""
+
                 for step_idx in range(n_steps):
-                    lead_min = step_idx * 15  # 15-min increments
-                    valid_time = ref_time
+                    val = float(time_vals[step_idx]) if step_idx < len(time_vals) else float(step_idx * 15)
+                    if "hour" in time_units.lower():
+                        lead_min = int(round(val * 60))
+                    elif "sec" in time_units.lower():
+                        lead_min = int(round(val / 60))
+                    else:
+                        lead_min = int(round(val))
+
+                    valid_time = ref_time + timedelta(minutes=lead_min)
                     sliced = precip_raw[step_idx, :, :]
                     if sliced.shape[0] == len(lat_sort_idx):
                         sliced = sliced[lat_sort_idx, :]
@@ -343,53 +354,66 @@ class RealNWPIngestionEngine:
         with rasterio.open(str(path)) as src:
             raw_data = src.read(1)
             bounds = src.bounds
-            lats = np.linspace(bounds.bottom, bounds.top, raw_data.shape[0])
-            lons = np.linspace(bounds.left, bounds.right, raw_data.shape[1])
-            target_lats, target_lons = self._build_target_lat_lon_grid()
-            grid_mmh = self._reproject_slice(raw_data, lats, lons, target_lats, target_lons, "mm/h")
 
-            step = NWPForecastStep(
-                lead_minutes=0,
-                valid_time_utc=datetime.now(timezone.utc),
-                precip_rate_mmh=grid_mmh,
-                min_rate_mmh=float(np.min(grid_mmh)),
-                max_rate_mmh=float(np.max(grid_mmh)),
-                mean_rate_mmh=float(np.mean(grid_mmh)),
-            )
-            return RealNWPDataset(
-                source_provenance=NCMRWF_NCUM_SOURCE,
-                model_name="NCMRWF-NCUM-REGIONAL",
-                file_path=path,
-                file_sha256=sha256,
-                file_size_bytes=size,
-                reference_time_utc=datetime.now(timezone.utc),
-                target_grid=self.target_grid,
-                status=DataIngestionStatus.VALIDATED,
-                forecast_steps={0: step},
-                native_crs="EPSG:4326",
-                quality_flags=[QualityFlag.VALIDATED, QualityFlag.RESAMPLED],
-                provenance_class=ProvenanceClass.EXTERNAL_FORECAST,
-            )
+        provenance = SourceProvenance(
+            origin_agency="NCMRWF/IMD",
+            license="Open Government Data (OGD) India / MoES",
+            lineage="WMO GRIB2 Edition-2 high-resolution forecast raster",
+            temporal_range="0-3h nowcast matching lead steps",
+            spatial_coverage="Kolkata Urban Catchment Domain",
+        )
+
+        target_lats, target_lons = self._build_target_lat_lon_grid()
+        h, w = raw_data.shape
+        src_lats = np.linspace(bounds.bottom, bounds.top, h)
+        src_lons = np.linspace(bounds.left, bounds.right, w)
+        grid_mmh = self._reproject_slice(raw_data, src_lats, src_lons, target_lats, target_lons, "mm/h")
+
+        step = NWPForecastStep(
+            lead_minutes=0,
+            valid_time_utc=datetime.now(timezone.utc),
+            precip_rate_mmh=grid_mmh,
+            min_rate_mmh=float(np.min(grid_mmh)),
+            max_rate_mmh=float(np.max(grid_mmh)),
+            mean_rate_mmh=float(np.mean(grid_mmh)),
+        )
+
+        return RealNWPDataset(
+            source_provenance=provenance,
+            model_name="IMD-WRF-GRIB2",
+            file_path=path,
+            file_sha256=sha256,
+            file_size_bytes=size,
+            reference_time_utc=datetime.now(timezone.utc),
+            target_grid=self.target_grid,
+            status=DataIngestionStatus.VALIDATED,
+            forecast_steps={0: step},
+            native_crs="EPSG:4326",
+            quality_flags=[QualityFlag.VALIDATED, QualityFlag.RESAMPLED],
+            provenance_class=ProvenanceClass.EXTERNAL_FORECAST,
+        )
 
     def _build_target_lat_lon_grid(self) -> tuple[np.ndarray, np.ndarray]:
         """Convert the target GridSpec (EPSG:32645 UTM) cell center coordinates to WGS84 (Lat, Lon)."""
+        import rasterio.warp
         xmin, ymin, xmax, ymax = self.target_grid.bounds
         width = self.target_grid.width
         height = self.target_grid.height
+        half = self.target_grid.cell_size_m / 2.0
 
         # Metric grid cell centers (North-up top-to-bottom)
-        xs = np.linspace(xmin + 15.0, xmax - 15.0, width)
-        ys = np.linspace(ymax - 15.0, ymin + 15.0, height)
+        xs = np.linspace(xmin + half, xmax - half, width)
+        ys = np.linspace(ymax - half, ymin + half, height)
         mesh_x, mesh_y = np.meshgrid(xs, ys)
 
-        # UTM Zone 45N (EPSG:32645) exact approximate inverse transformation around Kolkata (22.5°N, 88.35°E)
-        # 1 deg latitude ≈ 110,574 m; 1 deg longitude ≈ 102,800 m at lat 22.5°
-        lat_0, lon_0 = 22.5000, 88.3500
-        x_0, y_0 = 638900.0, 2489000.0  # reference UTM anchor for Kolkata center
-
-        target_lons = lon_0 + (mesh_x - x_0) / 102800.0
-        target_lats = lat_0 + (mesh_y - y_0) / 110574.0
-
+        lon_list, lat_list = rasterio.warp.transform(
+            self.target_grid.crs_wkt_or_epsg,
+            "EPSG:4326",
+            mesh_x.ravel().tolist(),
+            mesh_y.ravel().tolist(),
+        )
+        target_lons = np.asarray(lon_list, dtype=float).reshape(mesh_x.shape)
+        target_lats = np.asarray(lat_list, dtype=float).reshape(mesh_y.shape)
         return target_lats, target_lons
 
     def _reproject_slice(
@@ -402,11 +426,15 @@ class RealNWPIngestionEngine:
         units: str,
     ) -> np.ndarray:
         """Bilinear spatial interpolation from geographic grid onto target simulation grid."""
-        data = np.array(src_data, dtype=float)
+        if isinstance(src_data, np.ma.MaskedArray):
+            data = np.ma.filled(src_data.astype(float), np.nan)
+        else:
+            data = np.array(src_data, dtype=float)
+
         if "kg" in units or "m-2 s-1" in units:
             data = data * 3600.0  # kg/m2/s -> mm/h
 
-        data = np.nan_to_num(data, nan=0.0, posinf=150.0, neginf=0.0)
+        data = np.nan_to_num(data, nan=0.0, posinf=0.0, neginf=0.0)
 
         interp = RegularGridInterpolator(
             (src_lats, src_lons),

@@ -90,8 +90,9 @@ def format_url_latex(url: str) -> str:
         return ""
     clean_u = url.strip()
     if clean_u.startswith("http://") or clean_u.startswith("https://"):
+        escaped_dest = clean_u.replace("\\", "/").replace("%", r"\%").replace("#", r"\#").replace("&", r"\&")
         escaped_label = escape_latex(clean_u)
-        return r'\href{' + clean_u + r'}{\texttt{' + escaped_label + r'}}'
+        return r'\href{' + escaped_dest + r'}{\texttt{' + escaped_label + r'}}'
     return escape_latex(clean_u)
 
 def format_description_to_latex(description: str) -> str:

@@ -142,7 +142,9 @@ class EvacuationEngine:
     def __init__(self) -> None:
         self.network = NETWORK
 
-    def find_nearest_node(self, x: float, y: float) -> Optional[tuple[str, tuple[float, float]]]:
+    MAX_SNAP_DISTANCE_M = 3000.0
+
+    def find_nearest_node(self, x: float, y: float, max_dist_m: float = MAX_SNAP_DISTANCE_M) -> Optional[tuple[str, tuple[float, float]]]:
         """Find closest road network node ID and coordinate to a projected UTM coordinate."""
         best_node_id: Optional[str] = None
         best_geom: Optional[tuple[float, float]] = None
@@ -154,7 +156,7 @@ class EvacuationEngine:
                 best_dist = d
                 best_node_id = nid
                 best_geom = (nx, ny)
-        if best_node_id and best_geom:
+        if best_node_id and best_geom and best_dist <= max_dist_m:
             return best_node_id, best_geom
         return None
 

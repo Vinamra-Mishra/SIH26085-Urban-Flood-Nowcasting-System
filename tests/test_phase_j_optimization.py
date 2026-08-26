@@ -75,6 +75,7 @@ class TestParetoOptimizer:
         tactical = next(p for p in res.pareto_frontier if p["tier_id"] == "TIER_1_TACTICAL")
         assert tactical["cost_breakdown"]["total_capex_crores"] <= 2.0
         assert tactical["benefit_cost_ratio_bcr"] > 0.0
+        assert tactical["economic_benefit"]["total_avoided_losses_inr"] > 0.0
 
     def test_solve_high_budget_selects_higher_tier(self):
         optimizer = InterventionOptimizer()

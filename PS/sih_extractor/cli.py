@@ -180,6 +180,8 @@ def run_cli():
             tex_path = os.path.join(args.output_dir, f"{prefix}.tex")
             if os.path.exists(tex_path):
                 exported_files.append(("LaTeX Source (Generated)", tex_path))
+            if args.format == "pdf":
+                sys.exit(1)
 
     # Output report
     print("\n[OK] Extraction and Export Completed Successfully!")

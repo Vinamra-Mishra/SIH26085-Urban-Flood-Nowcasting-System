@@ -138,7 +138,7 @@ def run_forward_calibration_simulation(
             "--output",
             str(out_path),
         ]
-        proc = subprocess.run(cmd, capture_output=True, text=True, check=True)
+        proc = subprocess.run(cmd, capture_output=True, text=True, check=True, timeout=120.0)
         if not out_path.exists():
             raise RuntimeError(f"Worker did not produce output: {proc.stderr}")
         data = json.loads(out_path.read_text(encoding="utf-8"))
@@ -213,7 +213,8 @@ class DrainageCalibrationEngine:
                     w_pbias=w_pbias,
                 )
                 return float(fit.composite_loss)
-            except Exception:
+            except Exception as exc:
+                logging.getLogger(__name__).warning("Forward calibration simulation failed for candidate %s: %s", candidate, exc)
                 return 1e6
 
         # Initial metrics evaluation

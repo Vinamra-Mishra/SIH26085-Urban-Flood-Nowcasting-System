@@ -87,6 +87,7 @@ class TestRealNWPIngestion:
         assert dataset.model_name == "NCMRWF-NCUM-REGIONAL"
         assert dataset.file_sha256 != ""
         assert len(dataset.forecast_steps) == 4
+        assert sorted(list(dataset.forecast_steps.keys())) == [0, 60, 120, 180]
         assert dataset.provenance_class == ProvenanceClass.EXTERNAL_FORECAST
         assert QualityFlag.VALIDATED in dataset.quality_flags
 
