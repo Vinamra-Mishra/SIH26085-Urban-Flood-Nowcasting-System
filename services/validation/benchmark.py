@@ -129,14 +129,14 @@ class BenchmarkEngine:
         ledger = sc_res.get("mass_ledger", {}) if isinstance(sc_res, dict) else {}
         raw_residual = ledger.get("relative_residual", ledger.get("residual_fraction_pct"))
         if raw_residual is not None:
-            residual_err: Optional[float] = float(raw_residual) * (100.0 if "relative_residual" in ledger else 1.0)
+            residual_err: Optional[float] = abs(float(raw_residual)) * (100.0 if "relative_residual" in ledger else 1.0)
         else:
             residual_err = None
 
         # Scientific Tier Classification
         csi = contingency["critical_success_index_csi"]
         is_self_eval = (benchmark.reference_scenario_id == scenario_id)
-        if nse >= 0.75 and csi >= 0.70 and (residual_err is None or residual_err <= 0.05):
+        if not is_self_eval and nse >= 0.75 and csi >= 0.70 and residual_err is not None and residual_err <= 0.05:
             tier = "TIER_1_PUBLICATION_GRADE"
         elif nse >= 0.50 and csi >= 0.50:
             tier = "TIER_2_OPERATIONAL_GRADE"

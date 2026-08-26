@@ -106,10 +106,11 @@ class RealNWPRainfallProvider(RainfallProvider):
             return None
 
         from datetime import timedelta
+        obs_time = step.valid_time_utc
         return RainfallObservation(
-            observation_time=observation_time,
-            valid_from=observation_time,
-            valid_to=observation_time + timedelta(minutes=15),
+            observation_time=obs_time,
+            valid_from=obs_time,
+            valid_to=obs_time + timedelta(minutes=15),
             rate_mmh=step.precip_rate_mmh,
             source_type=self._source_type,
             source_name=self._source_name,

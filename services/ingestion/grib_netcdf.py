@@ -17,6 +17,7 @@ Strict Provenance & Zero-Mock Policy:
 from __future__ import annotations
 
 import hashlib
+import logging
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from enum import Enum
@@ -351,12 +352,34 @@ class RealNWPIngestionEngine:
             )
 
     def _parse_grib2(self, path: Path, sha256: str, size: int) -> RealNWPDataset:
-        """Parse GRIB2 format using rasterio/xarray parser."""
+        """Parse GRIB2 format using rasterio reprojection onto target grid."""
         import rasterio
+        import rasterio.warp
         with rasterio.open(str(path)) as src:
-            raw_data = src.read(1)
-            bounds = src.bounds
+            raw_data = src.read(1).astype(np.float32)
+            src_crs = src.crs or "EPSG:4326"
+            src_transform = src.transform
             native_crs = str(src.crs or "EPSG:4326")
+
+            target_shape = (self.target_grid.height, self.target_grid.width)
+            grid_mmh = np.zeros(target_shape, dtype=np.float32)
+
+            xmin, ymin, xmax, ymax = self.target_grid.bounds
+            target_transform = rasterio.transform.from_bounds(
+                xmin, ymin, xmax, ymax,
+                self.target_grid.width, self.target_grid.height
+            )
+
+            rasterio.warp.reproject(
+                source=raw_data,
+                destination=grid_mmh,
+                src_transform=src_transform,
+                src_crs=src_crs,
+                dst_transform=target_transform,
+                dst_crs=self.target_grid.crs_wkt_or_epsg,
+                resampling=rasterio.warp.Resampling.bilinear,
+            )
+            grid_mmh = np.nan_to_num(np.maximum(grid_mmh, 0.0), nan=0.0)
 
         provenance = SourceProvenance(
             source_name="NCMRWF/IMD GRIB2 Regional NWP Model",
@@ -369,12 +392,6 @@ class RealNWPIngestionEngine:
             crs=native_crs,
             resolution="~3-4km regional",
         )
-
-        target_lats, target_lons = self._build_target_lat_lon_grid()
-        h, w = raw_data.shape
-        src_lats = np.linspace(bounds.bottom, bounds.top, h)
-        src_lons = np.linspace(bounds.left, bounds.right, w)
-        grid_mmh = self._reproject_slice(raw_data, src_lats, src_lons, target_lats, target_lons, "mm/h")
 
         step = NWPForecastStep(
             lead_minutes=0,

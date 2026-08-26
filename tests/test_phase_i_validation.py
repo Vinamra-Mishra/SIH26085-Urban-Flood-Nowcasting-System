@@ -73,7 +73,7 @@ class TestHydrologicalMetrics:
 class TestBenchmarkEvaluationEngine:
     """Test benchmark evaluation against reference scenarios."""
 
-    def test_self_benchmark_evaluation_tier_1(self):
+    def test_self_benchmark_evaluation_self_consistency(self):
         engine = BenchmarkEngine()
         res = engine.evaluate(scenario_id="S3", lead_minutes=110, benchmark_id="BENCHMARK_S3_CLEAN")
 
@@ -81,7 +81,8 @@ class TestBenchmarkEvaluationEngine:
         assert res.hydrograph_metrics["kling_gupta_efficiency_kge"] == 1.0
         assert res.spatial_contingency["critical_success_index_csi"] == 1.0
         assert res.depth_errors["rmse_m"] == 0.0
-        assert res.scientific_validation_tier == "TIER_1_PUBLICATION_GRADE"
+        assert res.provenance["self_consistency_check"] is True
+        assert res.scientific_validation_tier == "TIER_2_OPERATIONAL_GRADE"
 
     def test_surcharge_vs_clean_benchmark_divergence(self):
         engine = BenchmarkEngine()
@@ -89,7 +90,9 @@ class TestBenchmarkEvaluationEngine:
 
         assert res.depth_errors["rmse_m"] > 0.0
         assert res.spatial_contingency["critical_success_index_csi"] > 0.50
+        assert res.mass_conservation_residual_pct is not None
         assert res.mass_conservation_residual_pct <= 0.05
+        assert res.provenance["self_consistency_check"] is False
 
 
 class TestValidationAPIEndpoints:

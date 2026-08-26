@@ -62,8 +62,8 @@ class MassBalanceAuditSection:
     cumulative_swmm_outfall_m3: float
     surface_storage_m3: float
     subsurface_conduit_storage_m3: float
-    global_mass_residual_m3: float
-    relative_error_pct: float
+    global_mass_residual_m3: Optional[float]
+    relative_error_pct: Optional[float]
     certified_continuity_pass: bool
     certification_seal: str
 
@@ -75,7 +75,7 @@ class TransportationSection:
     caution_roads_count: int
     dry_roads_count: int
     impassable_road_ids: list[str]
-    sample_detour_savings_min: float
+    sample_detour_savings_min: Optional[float]
 
 
 @dataclass
@@ -228,11 +228,17 @@ def compile_dossier_from_scenario(scenario_id: str = "S4", lead_minutes: int = 1
     tot_inflow = float(ml.get("rainfall_input_m3", ml.get("cumulative_rainfall_m3", 0.0)))
     tot_outflow = float(ml.get("drainage_outfall_m3", ml.get("cumulative_drainage_m3", 0.0)))
     sub_stor = float(tot_inflow - tot_outflow - surf_stor) if has_ml else 0.0
-    has_res = "relative_residual" in ml or "residual_fraction_pct" in ml
+
+    raw_global = ml.get("combined_residual_m3", ml.get("global_mass_balance_residual_m3", ml.get("absolute_residual_m3")))
+    global_res: Optional[float] = float(raw_global) if raw_global is not None else None
+
     raw_res = ml.get("relative_residual", ml.get("residual_fraction_pct"))
-    mass_err = float(raw_res) if raw_res is not None else 0.0
-    rel_err_pct = abs(mass_err) * (100.0 if "relative_residual" in ml else 1.0)
-    continuity_pass = bool(has_res and rel_err_pct < 0.05)
+    if raw_res is not None:
+        rel_err_pct: Optional[float] = abs(float(raw_res)) * (100.0 if "relative_residual" in ml else 1.0)
+        continuity_pass = bool(rel_err_pct < 0.05)
+    else:
+        rel_err_pct = None
+        continuity_pass = False
 
     weights = compute_blending_weights(lead_minutes)
 
@@ -257,7 +263,7 @@ def compile_dossier_from_scenario(scenario_id: str = "S4", lead_minutes: int = 1
         cumulative_swmm_outfall_m3=tot_outflow,
         surface_storage_m3=surf_stor,
         subsurface_conduit_storage_m3=max(0.0, sub_stor),
-        global_mass_residual_m3=float(ml.get("combined_residual_m3", ml.get("global_mass_balance_residual_m3", 0.0))),
+        global_mass_residual_m3=global_res,
         relative_error_pct=rel_err_pct,
         certified_continuity_pass=continuity_pass,
         certification_seal="MoES-NCMRWF-CERTIFIED-NUMERICAL-CONTINUITY-PASS" if continuity_pass else "MoES-NCMRWF-CONTINUITY-UNVERIFIED",
@@ -269,7 +275,7 @@ def compile_dossier_from_scenario(scenario_id: str = "S4", lead_minutes: int = 1
         caution_roads_count=len(caution_roads),
         dry_roads_count=len(dry_roads),
         impassable_road_ids=impassable_roads,
-        sample_detour_savings_min=round(max(0.0, len(impassable_roads) * 3.2), 1),
+        sample_detour_savings_min=None,
     )
 
     cap_section = CAPAlertSection(
@@ -279,7 +285,7 @@ def compile_dossier_from_scenario(scenario_id: str = "S4", lead_minutes: int = 1
         urgency=cap_alert_obj.info[0].urgency.value if cap_alert_obj and cap_alert_obj.info else "Expected",
         severity=cap_alert_obj.info[0].severity.value if cap_alert_obj and cap_alert_obj.info else "Severe",
         certainty=cap_alert_obj.info[0].certainty.value if cap_alert_obj and cap_alert_obj.info else "Likely",
-        dispatched_channels_count=4 if cap_alert_obj else 0,
+        dispatched_channels_count=0,
     )
 
     prov_section = ProvenanceSection(
@@ -447,13 +453,16 @@ class PDFDossierCompiler:
 
         # 3. Certified Mass Conservation Ledger
         elements.append(Paragraph("2. CERTIFIED HYDRODYNAMIC MASS BALANCE CONTINUITY", self.style_h2))
+        res_str = f"{dossier.mass_balance.global_mass_residual_m3:+.2f} m³" if dossier.mass_balance.global_mass_residual_m3 is not None else "N/A"
+        err_str = f"Error: {dossier.mass_balance.relative_error_pct:.4f}% (< 0.05%)" if dossier.mass_balance.relative_error_pct is not None else "Error: N/A (Unverified)"
+
         mass_data = [
             ["Hydrodynamic Term", "Volume (m³)", "Continuity Balance Equation"],
             ["Cumulative Rainfall Surface Inflow", f"{dossier.mass_balance.cumulative_rainfall_inflow_m3:,.1f}", "V_in"],
             ["Cumulative SWMM Drainage Outfall", f"{dossier.mass_balance.cumulative_swmm_outfall_m3:,.1f}", "V_out"],
             ["Overland Surface Storage Inundation", f"{dossier.mass_balance.surface_storage_m3:,.1f}", "S_2D"],
             ["Underground Conduit Water Storage", f"{dossier.mass_balance.subsurface_conduit_storage_m3:,.1f}", "S_1D"],
-            ["Global Mass Balance Residual Error", f"{dossier.mass_balance.global_mass_residual_m3:+.2f} m³", f"Error: {dossier.mass_balance.relative_error_pct:.4f}% (< 0.05%)"],
+            ["Global Mass Balance Residual Error", res_str, err_str],
         ]
         mass_table = Table(mass_data, colWidths=[200, 140, 180])
         mass_table.setStyle(TableStyle([
@@ -468,16 +477,18 @@ class PDFDossierCompiler:
             ("TOPPADDING", (0, 0), (-1, -1), 3),
             ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
         ]))
-        if dossier.mass_balance.certified_continuity_pass:
+        elements.append(mass_table)
+        if dossier.mass_balance.certified_continuity_pass and dossier.mass_balance.relative_error_pct is not None:
             elements.append(Paragraph(
                 f"<font size=7 color='#2e7d32'>✔ <b>FORMAL CERTIFICATION</b>: Global hydrodynamic fluid continuity error "
                 f"({dossier.mass_balance.relative_error_pct:.4f}%) satisfies the numerical threshold (&lt;0.05%).</font>",
                 self.style_body,
             ))
         else:
+            err_disp = f"({dossier.mass_balance.relative_error_pct:.4f}%)" if dossier.mass_balance.relative_error_pct is not None else "(N/A)"
             elements.append(Paragraph(
                 f"<font size=7 color='#c82848'>✘ <b>NOT CERTIFIED</b>: Global hydrodynamic fluid continuity error "
-                f"({dossier.mass_balance.relative_error_pct:.4f}%) exceeds the numerical threshold (&lt;0.05%) or residual was unverified.</font>",
+                f"{err_disp} exceeds the numerical threshold (&lt;0.05%) or residual was unverified.</font>",
                 self.style_body,
             ))
         elements.append(Spacer(1, 8))
@@ -504,13 +515,21 @@ class PDFDossierCompiler:
         ]))
         elements.append(trans_table)
         elements.append(Paragraph(f"<b>Closed Street Segments</b>: <font color='#c82848'>{imp_str}</font>", self.style_body))
-        elements.append(Paragraph(f"<b>Flood-Aware Rerouting Benefit</b>: Average estimated detour time savings of <b>{dossier.transportation.sample_detour_savings_min:.1f} minutes</b> per routed emergency response trip.", self.style_body))
+        if dossier.transportation.sample_detour_savings_min is not None:
+            elements.append(Paragraph(f"<b>Flood-Aware Rerouting Benefit</b>: Average estimated detour time savings of <b>{dossier.transportation.sample_detour_savings_min:.1f} minutes</b> per routed emergency response trip.", self.style_body))
+        else:
+            elements.append(Paragraph("<b>Flood-Aware Rerouting Benefit</b>: Detour time savings not evaluated for this scenario frame.", self.style_body))
         elements.append(Spacer(1, 8))
 
         # 5. Common Alerting Protocol (CAP v1.2) Broadcast Record
         elements.append(Paragraph("4. OASIS COMMON ALERTING PROTOCOL (CAP v1.2) BROADCAST", self.style_h2))
+        dispatch_text = (
+            f"{dossier.cap_alert.dispatched_channels_count} channels delivered (SMS, WhatsApp, Webhook, GeoRSS Feed)."
+            if dossier.cap_alert.dispatched_channels_count > 0
+            else "Awaiting manual/automated dispatch trigger."
+        )
         cap_box_data = [
-            [Paragraph(f"<b>CAP Identifier</b>: {dossier.cap_alert.alert_identifier}<br/><b>Urgency / Severity / Certainty</b>: {dossier.cap_alert.urgency} / {dossier.cap_alert.severity} / {dossier.cap_alert.certainty}<br/><b>Headline</b>: <font color='#c82848'><b>{dossier.cap_alert.headline}</b></font><br/><b>Instruction</b>: {dossier.cap_alert.instruction}<br/><b>Multi-Channel Dispatch Receipts</b>: {dossier.cap_alert.dispatched_channels_count} channels delivered (SMS, WhatsApp, Webhook, GeoRSS Feed).", self.style_body)]
+            [Paragraph(f"<b>CAP Identifier</b>: {dossier.cap_alert.alert_identifier}<br/><b>Urgency / Severity / Certainty</b>: {dossier.cap_alert.urgency} / {dossier.cap_alert.severity} / {dossier.cap_alert.certainty}<br/><b>Headline</b>: <font color='#c82848'><b>{dossier.cap_alert.headline}</b></font><br/><b>Instruction</b>: {dossier.cap_alert.instruction}<br/><b>Multi-Channel Dispatch Receipts</b>: {dispatch_text}", self.style_body)]
         ]
         cap_table = Table(cap_box_data, colWidths=[520])
         cap_table.setStyle(TableStyle([

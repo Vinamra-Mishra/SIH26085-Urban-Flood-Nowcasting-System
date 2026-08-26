@@ -192,6 +192,7 @@ async def upload_nwp_file(file: UploadFile = File(...)) -> dict[str, Any]:
     try:
         dataset = engine.ingest_file(target_path)
     except Exception as e:
+        target_path.unlink(missing_ok=True)
         raise HTTPException(
             status_code=400,
             detail={"error": {"code": "NWP_PARSE_ERROR", "message": "Failed to parse uploaded NWP dataset."}},
@@ -265,18 +266,30 @@ def blend_nowcast_field(req: BlendRequest) -> dict[str, Any]:
             except Exception:
                 dataset = None
 
-    # Load radar frame for lead
-    from services.rainfall.fields import render_interval
-    interval_idx = max(0, req.lead_minutes // 15)
-    radar_arr_134 = render_interval((134, 134), "convective_cell", 35.0, interval_idx, seed=42)
+    # Check for live observed radar observation from radar provider
+    from apps.api.rainfall_api import get_provider
+    radar_prov = get_provider("dwr-kolkata-v1")
+    radar_obs = radar_prov.fetch_latest() if radar_prov else None
+
+    is_observed_radar = (radar_obs is not None and radar_obs.rate_mmh is not None and getattr(radar_obs, "source_type", None) == "real")
+    if is_observed_radar:
+        radar_arr_src = radar_obs.rate_mmh
+    else:
+        # Synthetic fallback rendering for demonstration
+        from services.rainfall.fields import render_interval
+        interval_idx = max(0, req.lead_minutes // 15)
+        radar_arr_src = render_interval((134, 134), "convective_cell", 35.0, interval_idx, seed=42)
 
     if dataset is not None:
         target_shape = (dataset.target_grid.height, dataset.target_grid.width)
-        from scipy.ndimage import zoom
-        zoom_factors = (target_shape[0] / 134.0, target_shape[1] / 134.0)
-        radar_arr = zoom(radar_arr_134, zoom_factors, order=1)
+        if radar_arr_src.shape != target_shape:
+            from scipy.ndimage import zoom
+            zoom_factors = (target_shape[0] / radar_arr_src.shape[0], target_shape[1] / radar_arr_src.shape[1])
+            radar_arr = zoom(radar_arr_src, zoom_factors, order=1)
+        else:
+            radar_arr = radar_arr_src
     else:
-        radar_arr = radar_arr_134
+        radar_arr = radar_arr_src
 
     blender = GLOBAL_MULTI_SENSOR_BLENDER
     res = blender.blend(radar_arr, dataset, req.lead_minutes)
@@ -288,7 +301,7 @@ def blend_nowcast_field(req: BlendRequest) -> dict[str, Any]:
             "w_radar": res.weights.w_radar,
             "w_nwp": res.weights.w_nwp,
         },
-        "radar_available": res.radar_available,
+        "radar_available": is_observed_radar,
         "nwp_available": res.nwp_available,
         "nwp_model_name": res.nwp_model_name,
         "nwp_sha256": res.nwp_sha256,
@@ -298,5 +311,5 @@ def blend_nowcast_field(req: BlendRequest) -> dict[str, Any]:
             "mean_rate_mmh": res.mean_rate_mmh,
         },
         "grid_shape": [int(res.blended_matrix.shape[0]), int(res.blended_matrix.shape[1])],
-        "provenance_class": res.provenance_class.value,
+        "provenance_class": res.provenance_class.value if is_observed_radar else ("SYNTHETIC_RADAR_FALLBACK" if not res.nwp_available else ProvenanceClass.EXTERNAL_FORECAST.value),
     }
