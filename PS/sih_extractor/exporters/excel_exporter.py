@@ -6,6 +6,12 @@ from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 from ..models import ProblemStatement
 
+def sanitize_cell_value(val):
+    if isinstance(val, str) and val.startswith(("=", "@", "+", "-", "\t", "\r")) and len(val) > 1:
+        return f"'{val}"
+    return val
+
+
 def export_to_excel(statements: List[ProblemStatement], output_path: str) -> str:
     """
     Exports the problem statements to an Excel workbook with formatting.
@@ -98,9 +104,7 @@ def export_to_excel(statements: List[ProblemStatement], output_path: str) -> str
             ]
             
             for c_idx, val in enumerate(row_data, start=1):
-                clean_val = val
-                if isinstance(clean_val, str) and clean_val.startswith(("=", "@", "+", "-")) and len(clean_val) > 1:
-                    clean_val = f"'{clean_val}"
+                clean_val = sanitize_cell_value(val)
                 cell = ws.cell(row=r_idx, column=c_idx, value=clean_val)
                 cell.font = regular_font
                 cell.border = thin_border
@@ -108,83 +112,71 @@ def export_to_excel(statements: List[ProblemStatement], output_path: str) -> str
                 
                 # Category highlight in 'Category' column
                 if c_idx == 4:
-                    if val == "Software":
+                    cell.font = bold_font
+                    if ps.category == "Software":
                         cell.fill = software_fill
-                        cell.font = Font(name="Calibri", size=10, bold=True, color="104F55")
-                    elif val == "Hardware":
+                    elif ps.category == "Hardware":
                         cell.fill = hardware_fill
-                        cell.font = Font(name="Calibri", size=10, bold=True, color="9A3412")
                 else:
-                    if r_idx % 2 == 0:
-                        cell.fill = alt_row_fill
-                        
-            ws.row_dimensions[r_idx].height = 50 # readable height for wrapped descriptions
-            
-        # Enable auto filters & freeze header
-        ws.auto_filter.ref = f"A1:{get_column_letter(len(columns))}{len(ps_list) + 1}"
-        ws.freeze_panes = "A2"
+                    cell.fill = row_fill
+                    
+            ws.row_dimensions[r_idx].height = 20
 
-    # Sheet 1: All Statements
+    # 1. Main Sheet: All Statements
     ws_all = wb.active
     populate_statements_sheet(ws_all, statements, "All Problem Statements")
     
-    # Sheet 2: Software
-    software_ps = [p for p in statements if p.category.lower() == "software"]
-    if software_ps:
-        ws_soft = wb.create_sheet(title="Software")
-        populate_statements_sheet(ws_soft, software_ps, "Software")
+    # 2. Software Sheet
+    sw_statements = [p for p in statements if p.category == "Software"]
+    if sw_statements:
+        ws_sw = wb.create_sheet()
+        populate_statements_sheet(ws_sw, sw_statements, "Software")
         
-    # Sheet 3: Hardware
-    hardware_ps = [p for p in statements if p.category.lower() == "hardware"]
-    if hardware_ps:
-        ws_hard = wb.create_sheet(title="Hardware")
-        populate_statements_sheet(ws_hard, hardware_ps, "Hardware")
+    # 3. Hardware Sheet
+    hw_statements = [p for p in statements if p.category == "Hardware"]
+    if hw_statements:
+        ws_hw = wb.create_sheet()
+        populate_statements_sheet(ws_hw, hw_statements, "Hardware")
         
-    # Sheet 4: Summary & Analytics
-    ws_sum = wb.create_sheet(title="Summary & Analytics")
+    # 4. Summary & Analytics Sheet
+    ws_sum = wb.create_sheet(title="Summary & Insights")
     ws_sum.views.sheetView[0].showGridLines = True
+    ws_sum.column_dimensions['A'].width = 36
+    ws_sum.column_dimensions['B'].width = 16
+    ws_sum.column_dimensions['C'].width = 16
     
     # Title Block
-    ws_sum.merge_cells("A1:E1")
-    ws_sum["A1"] = "Smart India Hackathon (SIH) 2026 - Problem Statements Summary"
+    ws_sum.merge_cells("A1:C1")
+    ws_sum["A1"] = "Smart India Hackathon 2026 — Dataset Insights"
     ws_sum["A1"].font = title_font
     ws_sum["A1"].fill = title_fill
-    ws_sum["A1"].alignment = Alignment(horizontal="left", vertical="center", indent=1)
+    ws_sum["A1"].alignment = Alignment(horizontal="center", vertical="center")
     ws_sum.row_dimensions[1].height = 36
     
-    # Overview Cards
-    ws_sum["A3"] = "Total Problem Statements"
-    ws_sum["A3"].font = bold_font
-    ws_sum["B3"] = len(statements)
-    ws_sum["B3"].font = Font(name="Calibri", size=14, bold=True, color="1B365D")
-    
-    ws_sum["A4"] = "Software Problems"
-    ws_sum["A4"].font = bold_font
-    ws_sum["B4"] = len(software_ps)
-    ws_sum["B4"].font = Font(name="Calibri", size=12, bold=True, color="104F55")
-    
-    ws_sum["A5"] = "Hardware Problems"
-    ws_sum["A5"].font = bold_font
-    ws_sum["B5"] = len(hardware_ps)
-    ws_sum["B5"].font = Font(name="Calibri", size=12, bold=True, color="9A3412")
+    ws_sum.merge_cells("A2:C2")
+    ws_sum["A2"] = f"Total Problem Statements Extracted: {len(statements)}"
+    ws_sum["A2"].font = bold_font
+    ws_sum["A2"].alignment = Alignment(horizontal="center", vertical="center")
+    ws_sum.row_dimensions[2].height = 22
     
     # Category Breakdown Table
-    ws_sum["A7"] = "Category Distribution"
-    ws_sum["A7"].font = Font(name="Calibri", size=12, bold=True)
-    ws_sum["A8"] = "Category"
-    ws_sum["A8"].font = header_font
-    ws_sum["A8"].fill = navy_header_fill
-    ws_sum["B8"] = "Count"
-    ws_sum["B8"].font = header_font
-    ws_sum["B8"].fill = navy_header_fill
-    ws_sum["C8"] = "Percentage"
-    ws_sum["C8"].font = header_font
-    ws_sum["C8"].fill = navy_header_fill
+    ws_sum["A4"] = "Category Breakdown"
+    ws_sum["A4"].font = Font(name="Calibri", size=12, bold=True)
+    
+    ws_sum["A5"] = "Category"
+    ws_sum["A5"].font = header_font
+    ws_sum["A5"].fill = navy_header_fill
+    ws_sum["B5"] = "Count"
+    ws_sum["B5"].font = header_font
+    ws_sum["B5"].fill = navy_header_fill
+    ws_sum["C5"] = "Percentage"
+    ws_sum["C5"].font = header_font
+    ws_sum["C5"].fill = navy_header_fill
     
     cats = Counter(p.category for p in statements)
-    row_cur = 9
+    row_cur = 6
     for cat, count in cats.most_common():
-        ws_sum[f"A{row_cur}"] = cat
+        ws_sum[f"A{row_cur}"] = sanitize_cell_value(cat)
         ws_sum[f"B{row_cur}"] = count
         pct = count / len(statements) if statements else 0
         ws_sum[f"C{row_cur}"] = f"{pct:.1%}"
@@ -210,7 +202,7 @@ def export_to_excel(statements: List[ProblemStatement], output_path: str) -> str
     themes = Counter(p.theme for p in statements)
     row_cur += 1
     for theme, count in themes.most_common():
-        ws_sum[f"A{row_cur}"] = theme
+        ws_sum[f"A{row_cur}"] = sanitize_cell_value(theme)
         ws_sum[f"B{row_cur}"] = count
         pct = count / len(statements) if statements else 0
         ws_sum[f"C{row_cur}"] = f"{pct:.1%}"
@@ -223,27 +215,26 @@ def export_to_excel(statements: List[ProblemStatement], output_path: str) -> str
     ws_sum[f"A{row_cur}"] = "Top Organizations / Ministries"
     ws_sum[f"A{row_cur}"].font = Font(name="Calibri", size=12, bold=True)
     row_cur += 1
-    ws_sum[f"A{row_cur}"] = "Organization / Ministry"
+    ws_sum[f"A{row_cur}"] = "Organization"
     ws_sum[f"A{row_cur}"].font = header_font
     ws_sum[f"A{row_cur}"].fill = navy_header_fill
-    ws_sum[f"B{row_cur}"] = "Problem Count"
+    ws_sum[f"B{row_cur}"] = "Count"
     ws_sum[f"B{row_cur}"].font = header_font
     ws_sum[f"B{row_cur}"].fill = navy_header_fill
+    ws_sum[f"C{row_cur}"] = "Percentage"
+    ws_sum[f"C{row_cur}"].font = header_font
+    ws_sum[f"C{row_cur}"].fill = navy_header_fill
     
     orgs = Counter(p.organization for p in statements)
     row_cur += 1
-    for org, count in orgs.most_common():
-        ws_sum[f"A{row_cur}"] = org
+    for org, count in orgs.most_common(10):
+        ws_sum[f"A{row_cur}"] = sanitize_cell_value(org)
         ws_sum[f"B{row_cur}"] = count
-        for col_letter in ("A", "B"):
+        pct = count / len(statements) if statements else 0
+        ws_sum[f"C{row_cur}"] = f"{pct:.1%}"
+        for col_letter in ("A", "B", "C"):
             ws_sum[f"{col_letter}{row_cur}"].border = thin_border
         row_cur += 1
-        
-    ws_sum.column_dimensions["A"].width = 45
-    ws_sum.column_dimensions["B"].width = 18
-    ws_sum.column_dimensions["C"].width = 18
-    ws_sum.column_dimensions["D"].width = 18
-    ws_sum.column_dimensions["E"].width = 18
 
     wb.save(output_path)
     return output_path

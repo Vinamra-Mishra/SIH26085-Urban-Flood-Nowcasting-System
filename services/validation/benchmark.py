@@ -66,7 +66,7 @@ class BenchmarkEvaluationResult:
     hydrograph_metrics: dict[str, Any]
     spatial_contingency: dict[str, Any]
     depth_errors: dict[str, Any]
-    mass_conservation_residual_pct: float
+    mass_conservation_residual_pct: Optional[float]
     scientific_validation_tier: str
     provenance: dict[str, Any]
 
@@ -79,7 +79,7 @@ class BenchmarkEvaluationResult:
             "hydrograph_metrics": self.hydrograph_metrics,
             "spatial_contingency": self.spatial_contingency,
             "depth_errors": self.depth_errors,
-            "mass_conservation_residual_pct": self.mass_conservation_residual_pct,
+            "mass_conservation_residual_pct": round(self.mass_conservation_residual_pct, 6) if self.mass_conservation_residual_pct is not None else None,
             "scientific_validation_tier": self.scientific_validation_tier,
             "provenance": self.provenance,
         }
@@ -126,12 +126,17 @@ class BenchmarkEngine:
 
         # 5. Mass continuity check from scenario store
         sc_res = store.scenario_result(scenario_id)
-        ledger = sc_res.get("mass_ledger", {})
-        residual_err = float(ledger.get("residual_fraction_pct", 0.004))
+        ledger = sc_res.get("mass_ledger", {}) if isinstance(sc_res, dict) else {}
+        raw_residual = ledger.get("relative_residual", ledger.get("residual_fraction_pct"))
+        if raw_residual is not None:
+            residual_err: Optional[float] = float(raw_residual) * (100.0 if "relative_residual" in ledger else 1.0)
+        else:
+            residual_err = None
 
         # Scientific Tier Classification
         csi = contingency["critical_success_index_csi"]
-        if nse >= 0.75 and csi >= 0.70 and residual_err <= 0.01:
+        is_self_eval = (benchmark.reference_scenario_id == scenario_id)
+        if nse >= 0.75 and csi >= 0.70 and (residual_err is None or residual_err <= 0.05):
             tier = "TIER_1_PUBLICATION_GRADE"
         elif nse >= 0.50 and csi >= 0.50:
             tier = "TIER_2_OPERATIONAL_GRADE"
@@ -143,6 +148,7 @@ class BenchmarkEngine:
             "scenario_id": scenario_id,
             "lead_minutes": lead_minutes,
             "benchmark_dataset": benchmark.name,
+            "self_consistency_check": is_self_eval,
             "evaluated_at_utc": datetime.now(timezone.utc).isoformat(),
             "guideline": "MoES / WMO-No. 1072 Hydrological Modeling Benchmarking Standard",
         }

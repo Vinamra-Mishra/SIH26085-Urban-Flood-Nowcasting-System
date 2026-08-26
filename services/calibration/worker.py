@@ -50,7 +50,16 @@ def run_isolated_forward_simulation(
             blocked_diameter_m=d_eff,
         )
         if abs(n_pipe - C1_MANNING) > 1e-4:
-            inp_content = inp_content.replace(f"     {C1_MANNING}   0", f"     {n_pipe:.4f}   0")
+            lines = inp_content.splitlines(keepends=True)
+            replaced = False
+            for idx, line in enumerate(lines):
+                if line.startswith("C1") and str(C1_MANNING) in line:
+                    lines[idx] = line.replace(str(C1_MANNING), f"{n_pipe:.4f}", 1)
+                    replaced = True
+                    break
+            if not replaced:
+                raise RuntimeError("Could not apply candidate Manning roughness to conduit C1")
+            inp_content = "".join(lines)
         temp_inp.write_text(inp_content)
 
     try:

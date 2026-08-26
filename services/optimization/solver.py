@@ -124,7 +124,7 @@ class InterventionOptimizer:
             area_reduction_m2=area_red,
             volume_reduction_m3=vol_red,
             reopened_roads_count=reopened,
-            protected_assets_count=reopened,
+            protected_assets_count=0,
         )
 
         capex = costs["total_capex_inr"]
@@ -195,14 +195,13 @@ class InterventionOptimizer:
             ),
         ]
 
-        # Determine optimal tier that fits within budget_crores
+        # Determine optimal tier that fits within budget_crores (maximizing BCR with MEI tie-breaker)
         feasible = [c for c in candidates if c.cost_breakdown["total_capex_crores"] <= budget_crores]
         if feasible:
-            # Pick highest MEI among feasible
-            optimal_pkg = max(feasible, key=lambda x: x.mitigation_effectiveness_index)
+            optimal_pkg = max(feasible, key=lambda x: (x.benefit_cost_ratio_bcr, x.mitigation_effectiveness_index))
+            recommended_tier = optimal_pkg.tier_id
         else:
-            # Pick smallest package if none fit perfectly
-            optimal_pkg = candidates[0]
+            recommended_tier = "NO_FEASIBLE_PACKAGE"
 
         provenance = {
             "classification": "PARETO_OPTIMIZATION_DECISION_SUPPORT",
@@ -217,7 +216,7 @@ class InterventionOptimizer:
             scenario_id=scenario_id,
             lead_minutes=lead_minutes,
             max_budget_crores=budget_crores,
-            optimal_recommended_tier=optimal_pkg.tier_id,
+            optimal_recommended_tier=recommended_tier,
             pareto_frontier=[c.to_dict() for c in candidates],
             provenance=provenance,
         )

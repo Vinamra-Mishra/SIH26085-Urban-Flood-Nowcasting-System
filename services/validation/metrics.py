@@ -46,19 +46,30 @@ def calculate_kge(sim: np.ndarray, obs: np.ndarray) -> dict[str, float]:
     mean_s = float(np.mean(s))
     mean_o = float(np.mean(o))
 
+    if np.allclose(s, o, atol=1e-6):
+        return {
+            "kge": 1.0,
+            "correlation_r": 1.0,
+            "variability_alpha": 1.0,
+            "bias_beta": 1.0,
+        }
+
     # Pearson correlation coefficient r
     if std_s > 1e-12 and std_o > 1e-12:
         cov = float(np.mean((s - mean_s) * (o - mean_o)))
         r = cov / (std_s * std_o)
         r = max(-1.0, min(1.0, r))
     else:
-        r = 1.0 if abs(std_s - std_o) <= 1e-6 else 0.0
+        r = 0.0
 
     # Variability ratio alpha
-    alpha = (std_s / std_o) if std_o > 1e-12 else 1.0
+    alpha = (std_s / std_o) if std_o > 1e-12 else 0.0
 
     # Bias ratio beta
-    beta = (mean_s / mean_o) if abs(mean_o) > 1e-12 else 1.0
+    if abs(mean_o) > 1e-12:
+        beta = mean_s / mean_o
+    else:
+        beta = 1.0 if abs(mean_s - mean_o) <= 1e-6 else (mean_s if mean_s > 0 else 0.0)
 
     # Composite KGE score
     kge = 1.0 - math.sqrt((r - 1.0) ** 2 + (alpha - 1.0) ** 2 + (beta - 1.0) ** 2)

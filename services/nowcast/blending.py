@@ -151,10 +151,22 @@ class MultiSensorBlender:
 
         # 3. Shape alignment check
         if r_mat.shape != n_mat.shape:
-            # Resize or crop to target shape
-            from scipy.ndimage import zoom
-            zoom_factors = (r_mat.shape[0] / n_mat.shape[0], r_mat.shape[1] / n_mat.shape[1])
-            n_mat = zoom(n_mat, zoom_factors, order=1)
+            blended = np.clip(r_mat, 0.0, 300.0)
+            return BlendedRainfallResult(
+                lead_minutes=lead_minutes,
+                blending_mode=BlendingMode.FALLBACK_RADAR_ONLY,
+                weights=BlendingWeights(lead_minutes=lead_minutes, w_radar=1.0, w_nwp=0.0),
+                blended_matrix=blended,
+                min_rate_mmh=float(np.min(blended)),
+                max_rate_mmh=float(np.max(blended)),
+                mean_rate_mmh=float(np.mean(blended)),
+                radar_available=True,
+                nwp_available=False,
+                nwp_model_name=nwp_dataset.model_name,
+                nwp_sha256=nwp_dataset.file_sha256,
+                provenance_class=ProvenanceClass.DERIVED,
+                quality_flags=[QualityFlag.VALIDATED, QualityFlag.RESAMPLED],
+            )
 
         # 4. Compute weighted fusion
         blended = weights.w_radar * r_mat + weights.w_nwp * n_mat

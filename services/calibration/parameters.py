@@ -243,6 +243,23 @@ class CalibrationParameterSet:
             d[k] = round(float(v), 6)
         return d
 
+    @classmethod
+    def from_dict(cls, d: dict[str, Any]) -> CalibrationParameterSet:
+        """Construct a parameter set from a serialized dictionary."""
+        known = {
+            "pipe_manning_n", "surface_manning_n", "blockage_ratio", "cd_orifice",
+            "horton_f0_mmh", "horton_fmin_mmh", "horton_decay_k", "microstore_m"
+        }
+        kwargs: dict[str, Any] = {}
+        extra: dict[str, float] = {}
+        for k, v in d.items():
+            if k in known:
+                kwargs[k] = float(v)
+            else:
+                extra[k] = float(v)
+        kwargs["extra_params"] = extra
+        return cls(**kwargs)
+
     def fingerprint(self) -> str:
         """Deterministic SHA-256 fingerprint of parameter values."""
         serialized = json.dumps(self.to_dict(), sort_keys=True)

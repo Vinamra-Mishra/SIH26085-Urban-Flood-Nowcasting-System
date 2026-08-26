@@ -137,10 +137,10 @@ class EarlyWarningScreener:
             min_r, max_r = int(np.min(rows)), int(np.max(rows))
             min_c, max_c = int(np.min(cols)), int(np.max(cols))
 
-            # Convert grid cell to approximate lat/lon near Kolkata pilot (22.5 deg N, 88.3 deg E)
-            # Local scaling ~ 0.00027 deg per 30m
+            # Convert grid cell to accurate lat/lon near Kolkata pilot (22.5 deg N, 88.35 deg E)
             lat_base, lon_base = 22.5000, 88.3500
-            deg_per_m = 1.0 / 111000.0
+            deg_per_m_lat = 1.0 / 111132.0
+            deg_per_m_lon = 1.0 / (111320.0 * math.cos(math.radians(lat_base)))
 
             y_min = origin_utm[1] + (depth_arr.shape[0] - max_r - 1) * cell_size_m
             y_max = origin_utm[1] + (depth_arr.shape[0] - min_r) * cell_size_m
@@ -148,10 +148,10 @@ class EarlyWarningScreener:
             x_max = origin_utm[0] + (max_c + 1) * cell_size_m
 
             # 4-corner bounding box
-            lat_s = lat_base + (y_min - origin_utm[1]) * deg_per_m
-            lat_n = lat_base + (y_max - origin_utm[1]) * deg_per_m
-            lon_w = lon_base + (x_min - origin_utm[0]) * deg_per_m
-            lon_e = lon_base + (x_max - origin_utm[0]) * deg_per_m
+            lat_s = lat_base + (y_min - origin_utm[1]) * deg_per_m_lat
+            lat_n = lat_base + (y_max - origin_utm[1]) * deg_per_m_lat
+            lon_w = lon_base + (x_min - origin_utm[0]) * deg_per_m_lon
+            lon_e = lon_base + (x_max - origin_utm[0]) * deg_per_m_lon
 
             polygon_coords = [
                 (lat_n, lon_w),

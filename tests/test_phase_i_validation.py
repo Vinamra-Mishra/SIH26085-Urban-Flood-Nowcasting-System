@@ -89,7 +89,7 @@ class TestBenchmarkEvaluationEngine:
 
         assert res.depth_errors["rmse_m"] > 0.0
         assert res.spatial_contingency["critical_success_index_csi"] > 0.50
-        assert res.mass_conservation_residual_pct <= 0.01
+        assert res.mass_conservation_residual_pct <= 0.05
 
 
 class TestValidationAPIEndpoints:

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import math
 import subprocess
 import sys
@@ -97,6 +98,29 @@ class CalibrationResult:
             "created_at_epoch": self.created_at_epoch,
             "parameter_fingerprint": self.optimal_parameters.fingerprint(),
         }
+
+    @classmethod
+    def from_dict(cls, d: dict[str, Any]) -> CalibrationResult:
+        """Reconstruct CalibrationResult from serialized dictionary."""
+        return cls(
+            calibration_id=d["calibration_id"],
+            scenario_id=d["scenario_id"],
+            network_provenance=NetworkProvenance(d["network_provenance"]),
+            observation_provenance=ObservationProvenance(d["observation_provenance"]),
+            validation_status=ValidationStatus(d["validation_status"]),
+            target_type=ObservationTarget(d["target_type"]),
+            target_sensor_id=d["target_sensor_id"],
+            initial_metrics=CompositeGoodnessOfFit(**d["initial_metrics"]),
+            final_metrics=CompositeGoodnessOfFit(**d["final_metrics"]),
+            initial_parameters=CalibrationParameterSet.from_dict(d["initial_parameters"]),
+            optimal_parameters=CalibrationParameterSet.from_dict(d["optimal_parameters"]),
+            time_minutes=tuple(float(x) for x in d.get("time_minutes", ())),
+            observed_values=tuple(float(x) for x in d.get("observed_values", ())),
+            simulated_values=tuple(float(x) for x in d.get("simulated_values", ())),
+            optimization_summary=d.get("optimization_summary", {}),
+            provenance_disclaimer=d.get("provenance_disclaimer", ""),
+            created_at_epoch=float(d.get("created_at_epoch", time.time())),
+        )
 
     def fingerprint(self) -> str:
         serialized = json.dumps(self.to_dict(), sort_keys=True)

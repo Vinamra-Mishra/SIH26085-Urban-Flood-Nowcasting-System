@@ -158,7 +158,16 @@ class NeuralNowcastEngine:
             pred_np = pred_tensor.squeeze().cpu().numpy()
 
         if pred_np.ndim != 2 or pred_np.shape != observation.rate_mmh.shape:
-            return self._advection_generator.generate(observation, vectors=vectors)
+            logger.warning(
+                "Neural prediction shape %s does not match observation shape %s; using advection fallback.",
+                getattr(pred_np, "shape", None),
+                observation.rate_mmh.shape,
+            )
+            return self._advection_fallback.generate(
+                observation=observation,
+                previous_observation=previous_observation,
+                quality=quality,
+            )
 
         pred_np = np.nan_to_num(np.maximum(pred_np, 0.0), nan=0.0, posinf=0.0, neginf=0.0)
 

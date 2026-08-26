@@ -93,7 +93,34 @@ class RealNWPRainfallProvider(RainfallProvider):
 
     def fetch_observation(self, observation_time: Optional[datetime] = None) -> Optional[RainfallObservation]:
         """Return NWP observation corresponding to the requested time."""
-        return self.fetch_latest()
+        if not self._dataset or not self._dataset.forecast_steps:
+            return None
+        if observation_time is None:
+            return self.fetch_latest()
+
+        ref_t = self._dataset.reference_time_utc
+        delta_sec = (observation_time - ref_t).total_seconds()
+        lead_min = int(round(delta_sec / 60.0))
+        step = self._dataset.get_step(lead_min)
+        if step is None:
+            return None
+
+        from datetime import timedelta
+        return RainfallObservation(
+            observation_time=observation_time,
+            valid_from=observation_time,
+            valid_to=observation_time + timedelta(minutes=15),
+            rate_mmh=step.precip_rate_mmh,
+            source_type=self._source_type,
+            source_name=self._source_name,
+            source_provider_id=self._provider_id,
+            spatial_reference=self._target_grid.crs_wkt_or_epsg,
+            spatial_resolution_m=self._target_grid.cell_size_m,
+            width=self._target_grid.width,
+            height=self._target_grid.height,
+            quality_flags=("NWP_FORECAST",),
+            metadata={"model_name": self._dataset.model_name, "file_sha256": self._dataset.file_sha256, "lead_minutes": step.lead_minutes},
+        )
 
     def health(self) -> ProviderHealth:
         """Current health status of this provider."""

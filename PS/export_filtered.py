@@ -352,8 +352,13 @@ def export_filtered():
             ps.deadline
         ]
         
+        def escape_spreadsheet_value(v):
+            if isinstance(v, str) and v[:1] in ("=", "+", "-", "@", "\t", "\r"):
+                return "'" + v
+            return v
+
         for c_idx, val in enumerate(row_vals, start=1):
-            cell = ws.cell(row=r_idx, column=c_idx, value=val)
+            cell = ws.cell(row=r_idx, column=c_idx, value=escape_spreadsheet_value(val))
             cell.font = bold_font if c_idx in (1, 2, 4) else regular_font
             cell.border = thin_border
             cell.alignment = headers[c_idx - 1][2]

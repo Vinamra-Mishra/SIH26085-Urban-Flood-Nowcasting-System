@@ -200,13 +200,13 @@ def compile_dossier_from_scenario(scenario_id: str = "S4", lead_minutes: int = 1
         scenario_id=clean_scenario,
     )
 
-    # Snapshot metrics from snapshot_inventory
+    # Snapshot metrics from snapshot_inventory or computed from depth grid
     snap = next((s for s in res_dict.get("snapshot_inventory", [])
                  if s.get("lead_minutes") == lead_minutes), {})
-    max_d = float(snap.get("max_depth_m", np.max(depth_arr) if depth_arr.size > 0 else 0.61))
-    inundated_area = float(snap.get("flooded_area_m2", snap.get("inundated_area_m2", 3492900.0)))
-    surf_stor = float(snap.get("total_flood_volume_m3", snap.get("surface_storage_m3", frame_dict.get("drainage", {}).get("surface_storage_m3", 420000.0))))
-    inundated_fraction = float(snap.get("inundated_fraction", (inundated_area / 16170000.0) if inundated_area else 0.216))
+    max_d = float(snap.get("max_depth_m", np.max(depth_arr) if depth_arr.size > 0 else 0.0))
+    inundated_area = float(snap.get("flooded_area_m2", snap.get("inundated_area_m2", float(np.count_nonzero(depth_arr >= 0.05) * 900.0) if depth_arr.size > 0 else 0.0)))
+    surf_stor = float(snap.get("total_flood_volume_m3", snap.get("surface_storage_m3", frame_dict.get("drainage", {}).get("surface_storage_m3", float(np.sum(depth_arr) * 900.0) if depth_arr.size > 0 else 0.0))))
+    inundated_fraction = float(snap.get("inundated_fraction", (inundated_area / (134 * 134 * 900.0)) if depth_arr.size > 0 else 0.0))
 
     # Impassable roads
     impassable_roads = [imp.get("road_id", "") for imp in road_impacts if imp.get("classification") == "IMPASSABLE"]
@@ -224,12 +224,14 @@ def compile_dossier_from_scenario(scenario_id: str = "S4", lead_minutes: int = 1
 
     # Mass balance values
     ml = res_dict.get("mass_ledger", {})
-    tot_inflow = float(ml.get("rainfall_input_m3", ml.get("cumulative_rainfall_m3", 1450000.0)))
-    tot_outflow = float(ml.get("drainage_outfall_m3", ml.get("cumulative_drainage_m3", 980000.0)))
-    sub_stor = float(tot_inflow - tot_outflow - surf_stor)
-    has_res = "relative_residual" in ml
-    mass_err = float(ml.get("relative_residual", 0.0001))
-    rel_err_pct = abs(mass_err) * 100.0
+    has_ml = bool(ml and ("rainfall_input_m3" in ml or "cumulative_rainfall_m3" in ml))
+    tot_inflow = float(ml.get("rainfall_input_m3", ml.get("cumulative_rainfall_m3", 0.0)))
+    tot_outflow = float(ml.get("drainage_outfall_m3", ml.get("cumulative_drainage_m3", 0.0)))
+    sub_stor = float(tot_inflow - tot_outflow - surf_stor) if has_ml else 0.0
+    has_res = "relative_residual" in ml or "residual_fraction_pct" in ml
+    raw_res = ml.get("relative_residual", ml.get("residual_fraction_pct"))
+    mass_err = float(raw_res) if raw_res is not None else 0.0
+    rel_err_pct = abs(mass_err) * (100.0 if "relative_residual" in ml else 1.0)
     continuity_pass = bool(has_res and rel_err_pct < 0.05)
 
     weights = compute_blending_weights(lead_minutes)
@@ -246,7 +248,7 @@ def compile_dossier_from_scenario(scenario_id: str = "S4", lead_minutes: int = 1
         summary_text=(
             f"Scenario {clean_scenario} coupled hydrodynamic simulation indicates peak surface waterlogging "
             f"of {max_d:.2f} m affecting {inundated_area:,.0f} sq.m ({inundated_fraction*100:.1f}% of domain). "
-            f"Underground SWMM drainage experiences heavy hydraulic surcharge with {len(impassable_roads)} road closures."
+            f"Underground SWMM drainage experiences hydraulic surcharge with {len(impassable_roads)} road closures."
         ),
     )
 
@@ -255,10 +257,10 @@ def compile_dossier_from_scenario(scenario_id: str = "S4", lead_minutes: int = 1
         cumulative_swmm_outfall_m3=tot_outflow,
         surface_storage_m3=surf_stor,
         subsurface_conduit_storage_m3=max(0.0, sub_stor),
-        global_mass_residual_m3=float(ml.get("combined_residual_m3", ml.get("global_mass_balance_residual_m3", 0.12))),
+        global_mass_residual_m3=float(ml.get("combined_residual_m3", ml.get("global_mass_balance_residual_m3", 0.0))),
         relative_error_pct=rel_err_pct,
         certified_continuity_pass=continuity_pass,
-        certification_seal="MoES-NCMRWF-CERTIFIED-NUMERICAL-CONTINUITY-PASS",
+        certification_seal="MoES-NCMRWF-CERTIFIED-NUMERICAL-CONTINUITY-PASS" if continuity_pass else "MoES-NCMRWF-CONTINUITY-UNVERIFIED",
     )
 
     transport_section = TransportationSection(
@@ -267,7 +269,7 @@ def compile_dossier_from_scenario(scenario_id: str = "S4", lead_minutes: int = 1
         caution_roads_count=len(caution_roads),
         dry_roads_count=len(dry_roads),
         impassable_road_ids=impassable_roads,
-        sample_detour_savings_min=6.4,
+        sample_detour_savings_min=round(max(0.0, len(impassable_roads) * 3.2), 1),
     )
 
     cap_section = CAPAlertSection(
@@ -277,7 +279,7 @@ def compile_dossier_from_scenario(scenario_id: str = "S4", lead_minutes: int = 1
         urgency=cap_alert_obj.info[0].urgency.value if cap_alert_obj and cap_alert_obj.info else "Expected",
         severity=cap_alert_obj.info[0].severity.value if cap_alert_obj and cap_alert_obj.info else "Severe",
         certainty=cap_alert_obj.info[0].certainty.value if cap_alert_obj and cap_alert_obj.info else "Likely",
-        dispatched_channels_count=4,
+        dispatched_channels_count=4 if cap_alert_obj else 0,
     )
 
     prov_section = ProvenanceSection(
@@ -466,8 +468,18 @@ class PDFDossierCompiler:
             ("TOPPADDING", (0, 0), (-1, -1), 3),
             ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
         ]))
-        elements.append(mass_table)
-        elements.append(Paragraph("<font size=7 color='#2e7d32'>✔ <b>FORMAL CERTIFICATION</b>: Global hydrodynamic fluid continuity error satisfies the strict numerical threshold (&lt;0.01%).</font>", self.style_body))
+        if dossier.mass_balance.certified_continuity_pass:
+            elements.append(Paragraph(
+                f"<font size=7 color='#2e7d32'>✔ <b>FORMAL CERTIFICATION</b>: Global hydrodynamic fluid continuity error "
+                f"({dossier.mass_balance.relative_error_pct:.4f}%) satisfies the numerical threshold (&lt;0.05%).</font>",
+                self.style_body,
+            ))
+        else:
+            elements.append(Paragraph(
+                f"<font size=7 color='#c82848'>✘ <b>NOT CERTIFIED</b>: Global hydrodynamic fluid continuity error "
+                f"({dossier.mass_balance.relative_error_pct:.4f}%) exceeds the numerical threshold (&lt;0.05%) or residual was unverified.</font>",
+                self.style_body,
+            ))
         elements.append(Spacer(1, 8))
 
         # 4. Transportation Impassability Register

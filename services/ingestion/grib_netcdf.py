@@ -279,8 +279,8 @@ class RealNWPIngestionEngine:
                         base_str = time_units.split("since")[1].strip()
                         base_dt = datetime.fromisoformat(base_str.replace(" UTC", "").replace("Z", "")).replace(tzinfo=timezone.utc)
                         ref_time = base_dt
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logging.getLogger(__name__).warning("Failed to parse NetCDF reference time: %s", exc)
 
             # 3. Build target coordinate meshgrid in EPSG:32645 -> WGS84 lat/lon
             target_lats, target_lons = self._build_target_lat_lon_grid()
@@ -306,9 +306,11 @@ class RealNWPIngestionEngine:
                 from datetime import timedelta
                 time_vals = ds.variables["time"][:] if "time" in ds.variables else np.arange(n_steps) * 15.0
                 time_units = getattr(ds.variables["time"], "units", "") if "time" in ds.variables else ""
+                base_time_val = float(time_vals[0]) if len(time_vals) > 0 else 0.0
 
                 for step_idx in range(n_steps):
-                    val = float(time_vals[step_idx]) if step_idx < len(time_vals) else float(step_idx * 15)
+                    raw_val = float(time_vals[step_idx]) if step_idx < len(time_vals) else float(step_idx * 15)
+                    val = raw_val - base_time_val
                     if "hour" in time_units.lower():
                         lead_min = int(round(val * 60))
                     elif "sec" in time_units.lower():
@@ -354,13 +356,18 @@ class RealNWPIngestionEngine:
         with rasterio.open(str(path)) as src:
             raw_data = src.read(1)
             bounds = src.bounds
+            native_crs = str(src.crs or "EPSG:4326")
 
         provenance = SourceProvenance(
-            origin_agency="NCMRWF/IMD",
-            license="Open Government Data (OGD) India / MoES",
-            lineage="WMO GRIB2 Edition-2 high-resolution forecast raster",
-            temporal_range="0-3h nowcast matching lead steps",
-            spatial_coverage="Kolkata Urban Catchment Domain",
+            source_name="NCMRWF/IMD GRIB2 Regional NWP Model",
+            dataset_name="NCMRWF-IMD-GRIB2-FORECAST",
+            version="1.0.0",
+            acquisition_timestamp=datetime.now(timezone.utc),
+            source_url="https://www.ncmrwf.gov.in",
+            license_id="Open Government Data (OGD) India / MoES",
+            classification=DataSourceClassification.REAL,
+            crs=native_crs,
+            resolution="~3-4km regional",
         )
 
         target_lats, target_lons = self._build_target_lat_lon_grid()
@@ -388,7 +395,7 @@ class RealNWPIngestionEngine:
             target_grid=self.target_grid,
             status=DataIngestionStatus.VALIDATED,
             forecast_steps={0: step},
-            native_crs="EPSG:4326",
+            native_crs=native_crs,
             quality_flags=[QualityFlag.VALIDATED, QualityFlag.RESAMPLED],
             provenance_class=ProvenanceClass.EXTERNAL_FORECAST,
         )

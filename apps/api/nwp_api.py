@@ -138,6 +138,9 @@ def ingest_nwp_file(req: IngestFilePathRequest) -> dict[str, Any]:
     }
 
 
+MAX_NWP_UPLOAD_BYTES = 512 * 1024 * 1024  # 512 MB
+
+
 @router.post("/upload")
 async def upload_nwp_file(file: UploadFile = File(...)) -> dict[str, Any]:
     """Upload and ingest an authentic NCMRWF/IMD NetCDF4 (.nc) or GRIB2 (.grib2) file safely."""
@@ -164,9 +167,26 @@ async def upload_nwp_file(file: UploadFile = File(...)) -> dict[str, Any]:
     raw_root.mkdir(parents=True, exist_ok=True)
     target_path = (raw_root / safe_name).resolve()
 
-    import shutil
-    with open(target_path, "wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
+    written = 0
+    try:
+        with open(target_path, "wb") as buffer:
+            while chunk := await file.read(1024 * 1024):
+                written += len(chunk)
+                if written > MAX_NWP_UPLOAD_BYTES:
+                    raise HTTPException(
+                        status_code=413,
+                        detail={"error": {"code": "FILE_TOO_LARGE", "message": f"Upload exceeds {MAX_NWP_UPLOAD_BYTES} bytes limit."}},
+                    )
+                buffer.write(chunk)
+    except HTTPException:
+        target_path.unlink(missing_ok=True)
+        raise
+    except Exception as exc:
+        target_path.unlink(missing_ok=True)
+        raise HTTPException(
+            status_code=500,
+            detail={"error": {"code": "UPLOAD_WRITE_FAILED", "message": "Failed to write uploaded file."}},
+        ) from exc
 
     engine = GLOBAL_REAL_NWP_ENGINE
     try:
@@ -248,7 +268,15 @@ def blend_nowcast_field(req: BlendRequest) -> dict[str, Any]:
     # Load radar frame for lead
     from services.rainfall.fields import render_interval
     interval_idx = max(0, req.lead_minutes // 15)
-    radar_arr = render_interval((134, 134), "convective_cell", 35.0, interval_idx, seed=42)
+    radar_arr_134 = render_interval((134, 134), "convective_cell", 35.0, interval_idx, seed=42)
+
+    if dataset is not None:
+        target_shape = (dataset.target_grid.height, dataset.target_grid.width)
+        from scipy.ndimage import zoom
+        zoom_factors = (target_shape[0] / 134.0, target_shape[1] / 134.0)
+        radar_arr = zoom(radar_arr_134, zoom_factors, order=1)
+    else:
+        radar_arr = radar_arr_134
 
     blender = GLOBAL_MULTI_SENSOR_BLENDER
     res = blender.blend(radar_arr, dataset, req.lead_minutes)

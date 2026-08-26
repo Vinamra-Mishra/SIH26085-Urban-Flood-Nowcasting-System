@@ -19,8 +19,6 @@ def fetch_html(url: str = SIH_URL, cache_file: str = "page_cache.html", force_re
 
     logger.info(f"Fetching live HTML from '{url}'...")
     ctx = ssl.create_default_context()
-    ctx.check_hostname = False
-    ctx.verify_mode = ssl.CERT_NONE
 
     headers = {
         "User-Agent": (

@@ -51,8 +51,20 @@ class CalibrationLedger:
         self.storage_path.write_text(json.dumps(serialized, indent=2), encoding="utf-8")
 
     def _load_from_disk(self) -> None:
-        # Note: Disk rehydration creates dictionary records
-        pass
+        if not self.storage_path or not self.storage_path.exists():
+            return
+        try:
+            content = self.storage_path.read_text(encoding="utf-8").strip()
+            if not content:
+                return
+            data = json.loads(content)
+            for cid, item in data.items():
+                try:
+                    self._records[cid] = CalibrationResult.from_dict(item)
+                except Exception:
+                    pass
+        except Exception:
+            pass
 
 
 # Global singleton instance for the API layer
