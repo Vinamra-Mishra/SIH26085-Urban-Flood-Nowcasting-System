@@ -3,8 +3,8 @@
     "modelling_crs": "EPSG:32645",
     "nodata_cells": 9404,
     "normalization_status": "NORMALIZED",
-    "processing_fingerprint": "9b7ab55554f19d5a64d9fafa7d47319ef1fa3d2affec1b10f340acaf7a0e64e1",
-    "raw_dem_path": "/home/user/UFNS/data/raw/bagjola_kolkata_glo30_dem.tif",
+    "processing_fingerprint": "a378cbd89395be06222f8e2972cdf30ce46b4943bcf40b678306930ed0b9483e",
+    "raw_dem_path": "C:\\Users\\vkmuk\\OneDrive\\Documents\\Project\\SIH 2026\\data\\raw\\bagjola_kolkata_glo30_dem.tif",
     "raw_dem_sha256": "8832ae955ec8b8dbdab5a9bc4047852c17f6343c598514bc6092c38717dcc96a",
     "source_crs": "EPSG:4326",
     "total_cells": 790164,
@@ -21,7 +21,7 @@
     "embedded_crs": "ABSENT",
     "mapped_count": 0,
     "modelling_crs": "EPSG:32645",
-    "raw_drains_path": "/home/user/UFNS/data/raw/WB_AMRUT_Stormwater_drains.parquet",
+    "raw_drains_path": "C:\\Users\\vkmuk\\OneDrive\\Documents\\Project\\SIH 2026\\data\\raw\\WB_AMRUT_Stormwater_drains.parquet",
     "rejected_count": 4576,
     "rejection_breakdown": {
       "REJECTED_DUPLICATE": 4574,
@@ -31,7 +31,7 @@
     "total_source_features": 90395,
     "unresolved_count": 85819
   },
-  "generated_at": "2026-08-23T03:14:33.728027+00:00",
+  "generated_at": "2026-08-23T19:12:41.978475+00:00",
   "gridspec": {
     "affine_transform": [
       30.0,
@@ -140,7 +140,7 @@
   },
   "simulation_availability": {
     "hydraulic_network_ready": false,
-    "mass_relative_residual": 7.811132693635298e-08,
+    "mass_relative_residual": 7.811132675076074e-08,
     "mass_status": "pass",
     "mode_b_executed": true,
     "mode_b_run_id": "m11_modeB_20260823T000000Z"

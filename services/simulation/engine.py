@@ -36,7 +36,10 @@ from __future__ import annotations
 import hashlib
 import json
 import math
-import resource
+try:
+    import resource
+except ImportError:  # pragma: no cover
+    resource = None
 import time as _time
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
@@ -669,9 +672,13 @@ class CoupledFloodModel:
 
 
         wall = _time.perf_counter() - t_wall0
-        ru = resource.getrusage(resource.RUSAGE_SELF)
-        cpu = ru.ru_utime + ru.ru_stime
-        rss_mb = ru.ru_maxrss / 1024.0
+        if resource is not None:
+            ru = resource.getrusage(resource.RUSAGE_SELF)
+            cpu = ru.ru_utime + ru.ru_stime
+            rss_mb = ru.ru_maxrss / 1024.0
+        else:
+            cpu = wall
+            rss_mb = 0.0
 
 
         # -- artifacts (optional; deterministic) ------------------------------

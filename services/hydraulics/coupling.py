@@ -61,7 +61,7 @@ from services.hydrology.surface import SurfaceModel
 
 PASS_REL = 0.01
 WARN_REL = 0.05
-EPS_HEAD = 1e-6  # exchange dead-band (m): avoids sign chatter at zero head
+EPS_HEAD = 1e-5  # exchange dead-band (m): avoids sign chatter at zero head and dry film
 
 
 class CouplingError(RuntimeError):

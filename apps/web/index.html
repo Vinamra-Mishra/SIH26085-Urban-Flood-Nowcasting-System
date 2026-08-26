@@ -27,9 +27,15 @@
   .tag.warn { background:var(--red-bg); color:var(--red); }
   .tag.demo { background:var(--grey-bg); color:var(--purple); }
 
-  #app { display:grid; grid-template-columns:250px 1fr; grid-template-rows:1fr 84px 150px;
+  #app { display:grid; grid-template-columns:340px 1fr; grid-template-rows:1fr 84px 150px;
          height:calc(100vh - 56px); }
   .left { grid-row:1/3; border-right:1px solid var(--line); overflow-y:auto; padding:12px; }
+  .tab-nav { display:grid; grid-template-columns:repeat(4,1fr); gap:4px; background:var(--panel2); padding:4px; border-radius:8px; margin-bottom:12px; border:1px solid var(--line); }
+  .tab-btn { padding:6px 2px; font-size:11px; font-weight:600; border:1px solid transparent; background:transparent; color:var(--muted); border-radius:5px; cursor:pointer; text-align:center; transition:all 0.15s ease; white-space:nowrap; }
+  .tab-btn:hover { color:var(--ink); background:rgba(255,255,255,0.03); }
+  .tab-btn.active { background:var(--blue-bg); color:var(--blue); border-color:rgba(74,158,232,0.4); font-weight:700; }
+  .tab-pane { display:none; }
+  .tab-pane.active { display:block; }
   .mapwrap { position:relative; grid-column:2; grid-row:1; overflow:hidden; background:#0a0f16; }
   #map { display:block; width:100%; height:100%; cursor:grab; }
   #map.dragging { cursor:grabbing; }
@@ -127,58 +133,216 @@
 
 <div id="app">
   <aside class="left">
-    <div class="panel" style="margin-bottom:10px" id="rainfall-panel">
-      <h2>Rainfall + Nowcast</h2>
-      <div id="rainfall-status" class="muted">Loading…</div>
+    <div class="tab-nav">
+      <button class="tab-btn active" data-tab="tab-sim">🌊 Forecast</button>
+      <button class="tab-btn" data-tab="tab-roads">🚗 Roads</button>
+      <button class="tab-btn" data-tab="tab-calib">⚙️ Tune</button>
+      <button class="tab-btn" data-tab="tab-alerts">🚨 Alerts</button>
+      <button class="tab-btn" data-tab="tab-mitigation">🌱 Sponge</button>
+      <button class="tab-btn" data-tab="tab-vulnerability">🏥 Assets</button>
     </div>
 
-    <div class="panel" style="margin-bottom:10px" id="projection-panel">
-      <h2>M9 · PERSISTENCE PROJECTION</h2>
-      <div class="row" style="margin-bottom:6px">
-        <select id="view-mode" class="btn ghost">
-          <option value="scenario">Historical M5 scenarios</option>
-          <option value="projection">M9 persistence projection</option>
+    <!-- PANE 1: Simulation & Projections -->
+    <div class="tab-pane active" id="tab-sim">
+      <div class="panel" style="margin-bottom:10px" id="rainfall-panel">
+        <h2>Rainfall + Nowcast</h2>
+        <div id="rainfall-status" class="muted">Loading…</div>
+      </div>
+
+      <div class="panel" style="margin-bottom:10px" id="projection-panel">
+        <h2>M9 · Persistence Projections</h2>
+        <div class="row" style="margin-bottom:6px">
+          <select id="view-mode" class="btn ghost" style="flex:1">
+            <option value="scenario">Historical M5 Scenarios</option>
+            <option value="projection">M9 Persistence (0–3h)</option>
+          </select>
+          <select id="projection-config" class="btn ghost"></select>
+        </div>
+        <div id="projection-status" class="muted">Loading…</div>
+        <div style="margin-top:6px;font-size:10px;color:var(--amber)">PERSISTENCE PROJECTION · NOT_REAL_TIME · NOT_VALIDATED FORECAST</div>
+      </div>
+
+      <div class="panel" style="margin-bottom:10px">
+        <h2>1 · Scenario Profile</h2>
+        <div id="scenarios"></div>
+      </div>
+
+      <div class="panel" style="margin-bottom:10px" id="nwp-panel">
+        <h2>Phase D · NCMRWF NWP + Radar Fusion</h2>
+        <div id="nwp-status" class="muted" style="font-size:11px">Loading NWP status…</div>
+        <div class="row" style="margin-top:6px;gap:6px">
+          <button class="btn ghost" id="btn-blend-nowcast" style="flex:1;font-size:10px;padding:4px 6px">🔀 Blend Radar + NWP</button>
+        </div>
+        <div id="nwp-blend-output" style="margin-top:4px;font-size:10px" class="muted"></div>
+      </div>
+
+      <div class="panel" style="margin-bottom:10px">
+        <h2>Hydraulic Surcharge (S3 → S4)</h2>
+        <div id="comparison"></div>
+      </div>
+    </div>
+
+    <!-- PANE 2: Roads & Routing -->
+    <div class="tab-pane" id="tab-roads">
+      <div class="panel" style="margin-bottom:10px">
+        <h2>2 · Street Depth Inspector</h2>
+        <div id="road-panel" class="muted">Click any road segment on the map to inspect simulated water depth and vehicle passability.</div>
+      </div>
+
+      <div class="panel" style="margin-bottom:10px">
+        <h2>3 · Dynamic Safe Evacuation Routing</h2>
+        
+        <label style="font-size:11px;font-weight:600;display:block;margin-bottom:4px">Vehicle & Mobility Profile</label>
+        <select id="evac-vehicle-profile" class="btn ghost" style="width:100%;margin-bottom:8px;font-size:11px">
+          <option value="AMBULANCE">🚑 Emergency Ambulance (≤20 cm)</option>
+          <option value="HEAVY_RESCUE">🚒 NDRF / Fire Rescue Truck (≤45 cm)</option>
+          <option value="LIGHT_VEHICLE" selected>🚗 Civilian Light Vehicle (≤10 cm)</option>
+          <option value="PEDESTRIAN">🚶 Pedestrian Evacuee (≤5 cm)</option>
         </select>
-        <select id="projection-config" class="btn ghost"></select>
+
+        <div class="row" style="margin-bottom:6px">
+          <button class="btn" id="tool-origin">Set origin</button>
+          <button class="btn" id="tool-dest">Set destination</button>
+          <select id="route-mode" class="btn ghost" style="font-size:10px">
+            <option value="flood_aware">Flood-aware</option>
+            <option value="avoid_impassable">Avoid impassable</option>
+          </select>
+        </div>
+        <div class="row" style="margin-bottom:6px">
+          <input type="text" id="inp-origin" placeholder="Orig X,Y" class="btn ghost" style="width:110px">
+          <input type="text" id="inp-dest" placeholder="Dest X,Y" class="btn ghost" style="width:110px">
+        </div>
+
+        <div class="row" style="margin-bottom:6px;gap:6px">
+          <button class="btn ghost" id="btn-evac-shelter" style="flex:1;background:var(--blue-bg);color:var(--blue);font-weight:600;font-size:11px;padding:6px">🏥 Evacuate to Nearest Shelter</button>
+          <button class="btn ghost" id="btn-evac-cutoff" style="font-size:10px;padding:4px 6px">⏱ Cut-Off</button>
+        </div>
+
+        <div id="route-panel" class="muted">Pick an origin and destination on the map, or click 'Evacuate to Nearest Shelter'.</div>
+        <div id="evac-output" style="margin-top:6px;font-size:10px" class="muted"></div>
       </div>
-      <div id="projection-status" class="muted">Loading…</div>
-      <div style="margin-top:6px;font-size:10px;color:var(--amber)">PERSISTENCE PROJECTION · NOT_REAL_TIME · NOT_VALIDATED FORECAST</div>
     </div>
 
-    <div class="panel" style="margin-bottom:10px">
-      <h2>1 · Scenario</h2>
-      <div id="scenarios"></div>
+    <!-- PANE 3: Auto-Calibration -->
+    <div class="tab-pane" id="tab-calib">
+      <div class="panel" style="margin-bottom:10px" id="calibration-panel">
+        <h2>4 · Drainage Auto-Calibration</h2>
+        <div class="row" style="margin-bottom:6px">
+          <select id="calib-strategy" class="btn ghost" style="flex:1">
+            <option value="NELDER_MEAD">Nelder-Mead (Local)</option>
+            <option value="DIFF_EVOLUTION">Differential Evolution (Global)</option>
+          </select>
+          <button class="btn" id="btn-run-calib">Tune</button>
+        </div>
+        <div class="row" style="margin-bottom:6px">
+          <label style="font-size:11px;color:var(--muted)">
+            <input type="checkbox" id="calib-synth-check" checked> Synthetic Ground Truth
+          </label>
+          <button class="btn ghost" id="btn-run-sens" style="margin-left:auto;font-size:11px;padding:3px 7px">OAT Sensitivity</button>
+        </div>
+        <div id="calib-output" class="muted" style="font-size:11px">Ready. Click 'Tune' to run hydraulic inverse optimization.</div>
+      </div>
     </div>
 
-    <div class="panel" style="margin-bottom:10px">
-      <h2>2 · Inspect road</h2>
-      <div id="road-panel" class="muted">Click a road on the map.</div>
+    <!-- PANE 4: Early Warning & CAP Alerts -->
+    <div class="tab-pane" id="tab-alerts">
+      <div class="panel" style="margin-bottom:10px" id="alert-panel">
+        <h2>5 · Early Warning & CAP v1.2</h2>
+        <div class="row" style="margin-bottom:6px">
+          <button class="btn" id="btn-screen-alert" style="flex:1">🚨 Screen & Issue CAP</button>
+          <a href="/api/v1/alerts/feed.atom" target="_blank" class="btn ghost" style="font-size:11px;padding:4px 6px">Atom Feed</a>
+        </div>
+        <div id="alert-output" class="muted" style="font-size:11px">Click 'Screen & Issue CAP' to evaluate active flood thresholds.</div>
+      </div>
+      <div class="panel" style="margin-bottom:10px" id="report-panel">
+        <h2>Phase E · Executive Incident Dossier</h2>
+        <div class="row" style="margin-bottom:6px;gap:6px">
+          <button class="btn ghost" id="btn-generate-pdf" style="flex:1;background:var(--blue-bg);color:var(--blue);font-weight:600;font-size:11px;padding:6px">📄 Export Official Dossier (PDF)</button>
+        </div>
+        <div id="report-output" class="muted" style="font-size:10px">Certified MoES/NDMA incident report with mass continuity audit & road closure ledger.</div>
+      </div>
     </div>
 
-    <div class="panel" style="margin-bottom:10px">
-      <h2>3 · Route around it</h2>
-      <div class="row" style="margin-bottom:6px">
-        <button class="btn" id="tool-origin">Set origin</button>
-        <button class="btn" id="tool-dest">Set destination</button>
-        <select id="route-mode" class="btn ghost">
-          <option value="flood_aware">Flood-aware</option>
-          <option value="avoid_impassable">Avoid impassable</option>
+    <!-- PANE 5: Sponge City & Urban Flood Mitigation -->
+    <div class="tab-pane" id="tab-mitigation">
+      <div class="panel" style="margin-bottom:10px" id="mitigation-panel">
+        <h2>Phase F · Sponge City & Mitigation</h2>
+        <div style="font-size:11px;color:var(--muted);margin-bottom:6px">Non-mutating counterfactual intervention modeling.</div>
+        
+        <label style="font-size:11px;font-weight:600;display:block;margin-bottom:4px">Intervention Preset</label>
+        <select id="mit-strategy-select" class="btn ghost" style="width:100%;margin-bottom:8px;font-size:11px">
+          <option value="custom">⚙️ Custom User Configuration</option>
         </select>
+
+        <div style="margin-bottom:8px">
+          <div style="display:flex;justify-content:space-between;font-size:10px">
+            <span>Permeable Pavement (LID)</span>
+            <b id="val-slider-lid">20%</b>
+          </div>
+          <input type="range" id="slider-lid" min="0" max="50" step="5" value="20" style="width:100%">
+        </div>
+
+        <div style="margin-bottom:8px">
+          <div style="display:flex;justify-content:space-between;font-size:10px">
+            <span>Retention / Detention Basin</span>
+            <b id="val-slider-basin">30,000 m³</b>
+          </div>
+          <input type="range" id="slider-basin" min="0" max="100000" step="5000" value="30000" style="width:100%">
+        </div>
+
+        <div style="margin-bottom:8px">
+          <div style="display:flex;justify-content:space-between;font-size:10px">
+            <span>Emergency Mobile Pumps</span>
+            <b id="val-slider-pump">3.0 m³/s</b>
+          </div>
+          <input type="range" id="slider-pump" min="0" max="10" step="1" value="3" style="width:100%">
+        </div>
+
+        <div style="margin-bottom:8px">
+          <label style="font-size:11px;display:flex;align-items:center;gap:6px;cursor:pointer">
+            <input type="checkbox" id="check-unblock" checked>
+            <span>Desilt Culvert IN-004 (Restore Cd = 0.60)</span>
+          </label>
+        </div>
+
+        <button class="btn" id="btn-run-mitigation" style="width:100%;margin-top:4px;font-size:11px">🌱 Simulate Counterfactual Mitigation</button>
+
+        <div id="mitigation-output" style="margin-top:8px;font-size:11px" class="muted">
+          Select an intervention package or adjust parameters to calculate dynamic flood abatement.
+        </div>
       </div>
-      <div class="row" style="margin-bottom:6px">
-        <input type="text" id="inp-origin" placeholder="Orig X,Y" class="btn ghost" style="width:110px">
-        <input type="text" id="inp-dest" placeholder="Dest X,Y" class="btn ghost" style="width:110px">
-      </div>
-      <div id="route-panel" class="muted">Pick an origin and a destination on the map.</div>
     </div>
 
-    <div class="panel" style="margin-bottom:10px">
-      <h2>What changed? S3 → S4</h2>
-      <div id="comparison"></div>
+    <!-- PANE 6: Critical Infrastructure Vulnerability & Exposure -->
+    <div class="tab-pane" id="tab-vulnerability">
+      <div class="panel" style="margin-bottom:10px" id="vulnerability-panel">
+        <h2>Phase H · Critical Asset Exposure</h2>
+        <div style="font-size:11px;color:var(--muted);margin-bottom:6px">Dual-zone site & ingress disruption screening.</div>
+
+        <div id="cvi-card" style="background:var(--panel-sub);padding:6px;border-radius:4px;border:1px solid var(--border);margin-bottom:8px">
+          <div style="display:flex;justify-content:space-between;align-items:center">
+            <span style="font-size:11px;font-weight:600">Catchment Vulnerability (CVI)</span>
+            <b id="cvi-badge" style="font-size:14px;color:var(--blue)">0.0 / 100</b>
+          </div>
+          <div id="cvi-bar-wrap" style="background:#222;height:6px;border-radius:3px;margin:6px 0 4px 0;overflow:hidden">
+            <div id="cvi-bar" style="background:var(--blue);width:0%;height:100%"></div>
+          </div>
+          <div id="cvi-summary-text" style="font-size:10px;color:var(--muted)">Evaluating live exposure…</div>
+        </div>
+
+        <div class="row" style="margin-bottom:6px;gap:6px">
+          <button class="btn" id="btn-refresh-vuln" style="flex:1;font-size:11px">🔍 Refresh Asset Risk</button>
+        </div>
+
+        <h3 style="font-size:11px;font-weight:600;margin:8px 0 4px 0">🚨 Priority Action Queue</h3>
+        <div id="vuln-priority-list" style="font-size:10px;max-height:220px;overflow-y:auto">
+          <div class="muted">Loading priority emergency queue…</div>
+        </div>
+      </div>
     </div>
 
     <details class="prov">
-      <summary>Scientific provenance</summary>
+      <summary>Scientific Provenance & Audit</summary>
       <div class="kv" id="provenance"></div>
     </details>
   </aside>
@@ -192,8 +356,10 @@
       <label class="layer"><input type="checkbox" data-layer="rainfall"> Rainfall</label>
       <label class="layer"><input type="checkbox" data-layer="roads" checked> Roads</label>
       <label class="layer"><input type="checkbox" data-layer="impact" checked> Road impact</label>
+      <label class="layer"><input type="checkbox" data-layer="assets" checked> Critical Assets</label>
       <label class="layer"><input type="checkbox" data-layer="drainage"> Inlets / vent</label>
       <label class="layer"><input type="checkbox" data-layer="routes" checked> Routes</label>
+      <label class="layer"><input type="checkbox" data-layer="alert_geofence" checked> CAP geofence</label>
     </div>
     <div class="legend">
       <div style="display:flex;align-items:center;gap:6px"><span class="bar"></span> Flood depth (m)</div>
@@ -248,9 +414,9 @@ const state = {
   lead:110,
   playing:false,
   speed:1,
-  layers:{ depth:true, extent:false, rainfall:false, roads:true, impact:true, drainage:false, routes:true },
+  layers:{ depth:true, extent:false, rainfall:false, roads:true, impact:true, drainage:false, routes:true, alert_geofence:true },
   routeMode:"flood_aware", tool:"select",
-  origin:null, dest:null, route:null, selectedRoad:null,
+  origin:null, dest:null, route:null, selectedRoad:null, activeAlert:null,
 };
 
 let scenarios=[], roads=[], networkMeta=null, drainPts=null, policy=null;
@@ -299,6 +465,23 @@ function worldToCell(x,y){
 // ---------------------------------------------------------------- fetch utils
 async function getJSON(path) {
   const r = await fetch(API+path, {headers:{"Accept":"application/json"}});
+  if (!r.ok) {
+    let m=r.statusText;
+    let code=null;
+    try{const j=await r.json(); m=(j.error&&j.error.message)||m; code=(j.error&&j.error.code)||null;}catch(e){}
+    const err = new Error(m);
+    err.statusCode = r.status;
+    err.errorCode = code;
+    throw err;
+  }
+  return r.json();
+}
+async function postJSON(path, payload) {
+  const r = await fetch(API+path, {
+    method: "POST",
+    headers: {"Content-Type":"application/json", "Accept":"application/json"},
+    body: JSON.stringify(payload)
+  });
   if (!r.ok) {
     let m=r.statusText;
     let code=null;
@@ -463,6 +646,63 @@ function draw(){
       ctx.beginPath(); const a=w2s(seg.geometry[0][0],seg.geometry[0][1]); ctx.moveTo(a[0],a[1]);
       for (let i=1;i<seg.geometry.length;i++){const p=w2s(seg.geometry[i][0],seg.geometry[i][1]);ctx.lineTo(p[0],p[1]);}
       ctx.stroke();
+    }
+  }
+
+  // CAP alert geofence
+  if (state.layers.alert_geofence && state.activeAlert && state.activeAlert.info && state.activeAlert.info[0]) {
+    const inf = state.activeAlert.info[0];
+    const sev = inf.severity;
+    const strokeColor = (sev === "Extreme" || sev === "Severe") ? "rgba(224,108,92,0.9)" : "rgba(232,135,30,0.85)";
+    const fillColor = (sev === "Extreme" || sev === "Severe") ? "rgba(224,108,92,0.12)" : "rgba(232,135,30,0.08)";
+    for (const a of (inf.areas || [])) {
+      if (a.polygon && a.polygon.length >= 3) {
+        const lat_base = 22.5000, lon_base = 88.3500, deg_per_m = 1.0 / 111000.0;
+        ctx.beginPath();
+        for (let i = 0; i < a.polygon.length; i++) {
+          const [lat, lon] = a.polygon[i];
+          const wx = XMIN + (lon - lon_base) / deg_per_m;
+          const wy = YMIN + (lat - lat_base) / deg_per_m;
+          const [sx, sy] = w2s(wx, wy);
+          if (i === 0) ctx.moveTo(sx, sy);
+          else ctx.lineTo(sx, sy);
+        }
+        ctx.closePath();
+        ctx.fillStyle = fillColor;
+        ctx.fill();
+        ctx.strokeStyle = strokeColor;
+        ctx.lineWidth = 2.0;
+        ctx.setLineDash([6, 4]);
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
+    }
+  }
+
+  // Critical Infrastructure Assets
+  if (state.layers.assets && assetVulnerabilityData && assetVulnerabilityData.assets) {
+    for (const a of assetVulnerabilityData.assets) {
+      const [sx, sy] = w2s(a.coordinates_utm[0], a.coordinates_utm[1]);
+      let color = "#4cc38a"; // green NORMAL
+      if (a.operational_status === "ACCESS_IMPAIRED") color = "#e8c830"; // yellow
+      else if (a.operational_status === "DIRECT_INUNDATION") color = "#e8871e"; // orange
+      else if (a.operational_status === "CRITICAL_FAILURE") color = "#e06c5c"; // red
+
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.arc(sx, sy, 7, 0, 7);
+      ctx.fill();
+      ctx.strokeStyle = "#ffffff";
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+
+      // Icon label
+      ctx.fillStyle = "#0a0f16";
+      ctx.font = "bold 8px sans-serif";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      const icon = a.category === "HOSPITAL" ? "H" : (a.category === "POWER_SUBSTATION" ? "P" : (a.category === "METRO_STATION" ? "M" : (a.category === "WATER_TREATMENT" ? "W" : "F")));
+      ctx.fillText(icon, sx, sy);
     }
   }
 
@@ -1025,6 +1265,509 @@ async function loadRainfallStatus(){
     $("rainfall-status").innerHTML = `<div class="err" style="font-size:11px">Rainfall data unavailable: ${e.message}</div>`;
   }
 }
+async function runCalibration() {
+  const box = $("calib-output");
+  const btn = $("btn-run-calib");
+  const strategy = $("calib-strategy").value;
+  const isSynth = $("calib-synth-check").checked;
+  btn.disabled = true;
+  box.innerHTML = `<span style="color:var(--blue)">⏳ Running ${strategy} inverse calibration…</span>`;
+  try {
+    const res = await postJSON("/api/v1/calibration/run", {
+      scenario_id: "D_NORMAL_CAL",
+      strategy: strategy,
+      target_params: ["pipe_manning_n", "blockage_ratio"],
+      max_evaluations: 20,
+      duration_minutes: 20.0,
+      rain_mmh: 45.0,
+      synthetic_benchmark: isSynth
+    });
+    renderCalibrationResult(res);
+  } catch(e) {
+    box.innerHTML = `<div class="err" style="font-size:11px">Calibration failed: ${e.message}</div>`;
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+function renderCalibrationResult(res) {
+  const box = $("calib-output");
+  const opt = res.optimal_parameters;
+  const fm = res.final_metrics;
+  const statusColor = res.validation_status === "ALGORITHMIC_RECOVERY_VALIDATED" ? "var(--green)" : "var(--amber)";
+  
+  const obs = res.observed_values || [];
+  const sim = res.simulated_values || [];
+  const maxQ = Math.max(1e-4, ...obs, ...sim);
+  const w = 220, h = 55;
+  const ptsObs = obs.map((v, i) => `${(i / Math.max(1, obs.length - 1)) * w},${h - (v / maxQ) * (h - 6)}`).join(" ");
+  const ptsSim = sim.map((v, i) => `${(i / Math.max(1, sim.length - 1)) * w},${h - (v / maxQ) * (h - 6)}`).join(" ");
+  
+  box.innerHTML = `
+    <div style="margin-top:4px">
+      <span class="tag" style="background:${statusColor}22;color:${statusColor}">${res.validation_status}</span>
+    </div>
+    <div class="kv" style="margin-top:6px">
+      <dt>Conduit Manning (n)</dt><dd><b>${opt.pipe_manning_n.toFixed(4)}</b></dd>
+      <dt>Blockage Ratio (β)</dt><dd><b>${(opt.blockage_ratio * 100).toFixed(1)}%</b></dd>
+      <dt>Kling-Gupta (KGE)</dt><dd style="color:var(--green)">${fm.kge.toFixed(3)}</dd>
+      <dt>Nash-Sutcliffe (NSE)</dt><dd>${fm.nse.toFixed(3)}</dd>
+      <dt>Peak Flow Error</dt><dd>${fm.pfe_pct.toFixed(1)}%</dd>
+      <dt>Time-to-Peak Error</dt><dd>${fm.tpe_minutes.toFixed(1)} min</dd>
+      <dt>Evaluations / Time</dt><dd>${res.optimization_summary.total_evaluations} / ${res.optimization_summary.duration_seconds}s</dd>
+    </div>
+    <div style="margin-top:6px;border:1px solid var(--line);border-radius:4px;padding:4px;background:#0a0f16">
+      <div style="display:flex;justify-content:space-between;font-size:9px;color:var(--muted);margin-bottom:2px">
+        <span><span style="color:#e06c5c">―</span> Obs (${maxQ.toFixed(3)} m³/s)</span>
+        <span><span style="color:#4cc38a">―</span> Calibrated Sim</span>
+      </div>
+      <svg width="100%" height="55" viewBox="0 0 ${w} ${h}">
+        <polyline fill="none" stroke="#e06c5c" stroke-width="1.5" stroke-dasharray="3,3" points="${ptsObs}"/>
+        <polyline fill="none" stroke="#4cc38a" stroke-width="2" points="${ptsSim}"/>
+      </svg>
+    </div>
+  `;
+}
+
+async function runSensitivity() {
+  const box = $("calib-output");
+  const btn = $("btn-run-sens");
+  btn.disabled = true;
+  box.innerHTML = `<span style="color:var(--blue)">⏳ Computing One-At-A-Time sensitivity…</span>`;
+  try {
+    const list = await postJSON("/api/v1/calibration/sensitivity", {
+      param_names: ["pipe_manning_n", "blockage_ratio", "surface_manning_n", "cd_orifice"],
+      perturbation_fraction: 0.15,
+      duration_minutes: 15.0,
+      rain_mmh: 45.0
+    });
+    box.innerHTML = `
+      <div style="font-weight:600;margin-bottom:4px;font-size:11px">OAT Parameter Elasticity:</div>
+      <div class="kv">
+        ${list.map(s => `<dt>#${s.rank} ${s.parameter_name}</dt><dd><b>${s.elasticity.toFixed(3)}</b></dd>`).join("")}
+      </div>
+    `;
+  } catch(e) {
+    box.innerHTML = `<div class="err" style="font-size:11px">Sensitivity failed: ${e.message}</div>`;
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function screenAndIssueAlert() {
+  const box = $("alert-output");
+  const btn = $("btn-screen-alert");
+  btn.disabled = true;
+  box.innerHTML = `<span style="color:var(--blue)">⏳ Screening flood thresholds & dispatching CAP alert…</span>`;
+  try {
+    const res = await postJSON("/api/v1/alerts/evaluate", {
+      scenario_id: isProjectionMode() ? "S4" : state.scenario,
+      lead_minutes: isProjectionMode() ? 0 : state.lead,
+      status: "Exercise",
+      dispatch: true
+    });
+    if (res.alert_generated) {
+      state.activeAlert = res.alert;
+      renderAlertBulletin(res.alert, res.receipts, res.xml_url);
+      draw();
+    } else {
+      state.activeAlert = null;
+      box.innerHTML = `<div style="color:var(--green);font-size:11px">✔ ${res.message}</div>`;
+      draw();
+    }
+  } catch(e) {
+    box.innerHTML = `<div class="err" style="font-size:11px">Screening failed: ${e.message}</div>`;
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+function renderAlertBulletin(alert, receipts, xmlUrl) {
+  const box = $("alert-output");
+  const inf = alert.info && alert.info[0] ? alert.info[0] : {};
+  const sev = inf.severity || "Unknown";
+  const sevColors = { Extreme: "#e06c5c", Severe: "#e8871e", Moderate: "#e0c04a", Minor: "#4cc38a" };
+  const badgeColor = sevColors[sev] || "#6ea8e0";
+
+  box.innerHTML = `
+    <div style="margin-top:4px">
+      <span class="tag" style="background:${badgeColor}22;color:${badgeColor};font-weight:bold">${sev.toUpperCase()} WARNING</span>
+      <span class="tag" style="background:#4a9ee822;color:#4a9ee8">[EXERCISE]</span>
+    </div>
+    <div style="font-size:11px;font-weight:600;margin-top:4px;color:${badgeColor}">${inf.headline || alert.identifier}</div>
+    <div class="kv" style="margin-top:6px">
+      <dt>Event</dt><dd>${inf.event || "Urban Flood"}</dd>
+      <dt>Urgency / Certainty</dt><dd>${inf.urgency} / ${inf.certainty}</dd>
+      <dt>Dispatched Channels</dt><dd>${receipts ? receipts.length : 0} delivered</dd>
+      <dt>Identifier</dt><dd class="mono" style="font-size:9px">${alert.identifier}</dd>
+    </div>
+    <div style="margin-top:6px;font-size:10px;color:var(--muted);border-left:2px solid ${badgeColor};padding-left:6px">
+      ${inf.instruction || "Follow emergency detour routes."}
+    </div>
+    <div class="row" style="margin-top:8px;gap:4px">
+      <a href="${xmlUrl || ('/api/v1/alerts/' + alert.identifier + '.xml')}" target="_blank" class="btn ghost" style="flex:1;font-size:10px;padding:3px 5px;text-align:center">📄 CAP-XML</a>
+      <button class="btn ghost" id="btn-cancel-alert" style="flex:1;font-size:10px;padding:3px 5px;color:var(--amber)">Cancel</button>
+    </div>
+  `;
+
+  const cancelBtn = $("btn-cancel-alert");
+  if (cancelBtn) {
+    cancelBtn.onclick = () => cancelActiveAlert(alert.identifier);
+  }
+}
+
+async function cancelActiveAlert(alertId) {
+  const box = $("alert-output");
+  box.innerHTML = `<span style="color:var(--amber)">⏳ Cancelling alert…</span>`;
+  try {
+    await postJSON(`/api/v1/alerts/${alertId}/cancel`, { reason: "Manual drill cancellation" });
+    state.activeAlert = null;
+    box.innerHTML = `<div style="color:var(--muted);font-size:11px">✔ Alert cancelled and CANCEL CAP bulletin issued.</div>`;
+    draw();
+  } catch(e) {
+    box.innerHTML = `<div class="err" style="font-size:11px">Cancellation failed: ${e.message}</div>`;
+  }
+}
+
+async function loadNWPStatus() {
+  const box = $("nwp-status");
+  if (!box) return;
+  try {
+    const data = await getJSON("/api/v1/nwp/status");
+    if (data.real_data_available) {
+      box.innerHTML = `
+        <div class="kv">
+          <dt>Model</dt><dd><b>${data.model_name}</b></dd>
+          <dt>Status</dt><dd><span class="tag" style="background:var(--green-bg);color:var(--green)">VALIDATED</span></dd>
+          <dt>Grid</dt><dd class="mono" style="font-size:10px">${data.target_grid.dimensions} (${data.target_grid.crs})</dd>
+          <dt>File SHA</dt><dd class="mono" style="font-size:9px">${data.file_sha256.slice(0,12)}…</dd>
+        </div>
+      `;
+    } else {
+      box.innerHTML = `
+        <div style="color:var(--amber);font-size:11px;line-height:1.4">
+          <span class="tag" style="background:var(--amber-bg);color:var(--amber)">AWAITING REAL FILE</span><br>
+          Gate RD-09: No real NetCDF4/GRIB2 file in <code>data/raw/</code>.<br>
+          <span style="color:var(--muted);font-size:10px">Operating in RADAR_ONLY fallback.</span>
+        </div>
+      `;
+    }
+  } catch(e) {
+    box.innerHTML = `<div class="err" style="font-size:10px">NWP status error: ${e.message}</div>`;
+  }
+}
+
+async function blendNWPAndRadar() {
+  const box = $("nwp-blend-output");
+  const btn = $("btn-blend-nowcast");
+  if (!box || !btn) return;
+  btn.disabled = true;
+  box.innerHTML = `<span style="color:var(--blue)">⏳ Blending radar & NWP…</span>`;
+  try {
+    const res = await postJSON("/api/v1/nwp/blend", {
+      lead_minutes: state.lead || 0,
+      scenario_id: state.scenario || "S4"
+    });
+    box.innerHTML = `
+      <div class="kv" style="margin-top:4px">
+        <dt>Mode</dt><dd><b>${res.blending_mode}</b></dd>
+        <dt>Radar Weight</dt><dd><b>${(res.weights.w_radar * 100).toFixed(0)}%</b></dd>
+        <dt>NWP Weight</dt><dd><b>${(res.weights.w_nwp * 100).toFixed(0)}%</b></dd>
+        <dt>Mean Rate</dt><dd>${res.statistics.mean_rate_mmh.toFixed(1)} mm/h</dd>
+      </div>
+    `;
+  } catch(e) {
+    box.innerHTML = `<div class="err" style="font-size:10px">Blending error: ${e.message}</div>`;
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function generateAndOpenPDF() {
+  const box = $("report-output");
+  const btn = $("btn-generate-pdf");
+  if (!box || !btn) return;
+  btn.disabled = true;
+  box.innerHTML = `<span style="color:var(--blue)">⏳ Compiling official PDF dossier…</span>`;
+  try {
+    const res = await postJSON("/api/v1/reports/generate", {
+      scenario_id: state.scenario || "S4",
+      lead_minutes: state.lead || 110
+    });
+    box.innerHTML = `
+      <div style="color:var(--green);font-size:11px">
+        ✔ Compiled <b>${res.dossier_id}</b><br/>
+        <a href="${res.pdf_url}" target="_blank" class="btn ghost" style="display:inline-block;margin-top:4px;font-size:10px;padding:3px 6px">📥 Open / Download PDF</a>
+      </div>
+    `;
+    window.open(res.pdf_url, "_blank");
+  } catch(e) {
+    box.innerHTML = `<div class="err" style="font-size:10px">Report error: ${e.message}</div>`;
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+let mitigationStrategies = [];
+
+async function loadMitigationStrategies() {
+  const sel = $("mit-strategy-select");
+  if (!sel) return;
+  try {
+    const res = await getJSON("/api/v1/mitigation/strategies");
+    mitigationStrategies = res.strategies || [];
+    mitigationStrategies.forEach(s => {
+      const opt = document.createElement("option");
+      opt.value = s.strategy_id;
+      opt.textContent = `${s.name} (${s.category})`;
+      sel.appendChild(opt);
+    });
+  } catch (e) {
+    console.error("Failed to load mitigation strategies:", e);
+  }
+}
+
+if ($("mit-strategy-select")) {
+  $("mit-strategy-select").onchange = () => {
+    const sid = $("mit-strategy-select").value;
+    if (sid === "custom") return;
+    const strat = mitigationStrategies.find(s => s.strategy_id === sid);
+    if (!strat) return;
+    const cfg = strat.config;
+    $("slider-lid").value = (cfg.lid_permeable_fraction * 100).toFixed(0);
+    $("val-slider-lid").textContent = `${$("slider-lid").value}%`;
+    
+    $("slider-basin").value = cfg.detention_basin_m3;
+    $("val-slider-basin").textContent = `${Number(cfg.detention_basin_m3).toLocaleString()} m³`;
+    
+    $("slider-pump").value = cfg.emergency_pump_m3s;
+    $("val-slider-pump").textContent = `${cfg.emergency_pump_m3s.toFixed(1)} m³/s`;
+    
+    $("check-unblock").checked = Boolean(cfg.unblock_culvert_in004);
+  };
+}
+
+if ($("slider-lid")) {
+  $("slider-lid").oninput = () => {
+    $("val-slider-lid").textContent = `${$("slider-lid").value}%`;
+    $("mit-strategy-select").value = "custom";
+  };
+}
+if ($("slider-basin")) {
+  $("slider-basin").oninput = () => {
+    $("val-slider-basin").textContent = `${Number($("slider-basin").value).toLocaleString()} m³`;
+    $("mit-strategy-select").value = "custom";
+  };
+}
+if ($("slider-pump")) {
+  $("slider-pump").oninput = () => {
+    $("val-slider-pump").textContent = `${Number($("slider-pump").value).toFixed(1)} m³/s`;
+    $("mit-strategy-select").value = "custom";
+  };
+}
+
+async function runMitigationSimulation() {
+  const box = $("mitigation-output");
+  const btn = $("btn-run-mitigation");
+  if (!box || !btn) return;
+  btn.disabled = true;
+  box.innerHTML = `<span style="color:var(--blue)">⏳ Calculating counterfactual mitigation physics…</span>`;
+  try {
+    const payload = {
+      scenario_id: state.scenario || "S4",
+      lead_minutes: state.lead || 110,
+      lid_permeable_fraction: Number($("slider-lid").value) / 100.0,
+      detention_basin_m3: Number($("slider-basin").value),
+      emergency_pump_m3s: Number($("slider-pump").value),
+      unblock_culvert_in004: Boolean($("check-unblock").checked),
+      include_raster: false,
+    };
+    const res = await postJSON("/api/v1/mitigation/simulate", payload);
+    const b = res.baseline_metrics;
+    const m = res.mitigated_metrics;
+    const d = res.deltas;
+    const reopenedList = d.reopened_road_ids && d.reopened_road_ids.length ? d.reopened_road_ids.join(", ") : "None";
+
+    box.innerHTML = `
+      <div style="background:var(--panel-sub);padding:6px;border-radius:4px;border:1px solid var(--border)">
+        <div style="font-size:10px;color:var(--green);font-weight:600;margin-bottom:4px">
+          ✔ COUNTERFACTUAL RESULTS (MEI: ${(res.mitigation_effectiveness_index * 100).toFixed(1)}%)
+        </div>
+        <div class="kv">
+          <dt>Peak Depth</dt><dd><b>${b.max_depth_m.toFixed(2)} m</b> → <b style="color:var(--green)">${m.max_depth_m.toFixed(2)} m</b> (-${d.depth_reduction_pct.toFixed(1)}%)</dd>
+          <dt>Flooded Area</dt><dd>${(b.inundated_area_m2 / 1e6).toFixed(2)}M m² → <b style="color:var(--green)">${(m.inundated_area_m2 / 1e6).toFixed(2)}M m²</b> (-${d.area_reduction_pct.toFixed(1)}%)</dd>
+          <dt>Overland Vol</dt><dd>${(b.flood_volume_m3 / 1e3).toFixed(0)}k m³ → <b style="color:var(--green)">${(m.flood_volume_m3 / 1e3).toFixed(0)}k m³</b> (-${d.volume_reduction_pct.toFixed(1)}%)</dd>
+          <dt>Closed Roads</dt><dd>${b.impassable_count} → <b style="color:var(--green)">${m.impassable_count}</b> (${d.reopened_roads_count} reopened)</dd>
+        </div>
+        <div style="margin-top:4px;font-size:9px;color:var(--muted)">
+          <b>Reopened Corridors:</b> ${reopenedList}<br>
+          <i>Baseline physical model preserved verbatim.</i>
+        </div>
+      </div>
+    `;
+  } catch (e) {
+    box.innerHTML = `<div class="err" style="font-size:10px">Mitigation error: ${e.message}</div>`;
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function evacuateToNearestShelter() {
+  const box = $("evac-output");
+  const btn = $("btn-evac-shelter");
+  if (!box || !btn) return;
+  btn.disabled = true;
+  box.innerHTML = `<span style="color:var(--blue)">⏳ Finding nearest guaranteed-safe shelter…</span>`;
+  try {
+    const originCoords = state.origin || [300600.0, 2503410.0];
+    const profile = $("evac-vehicle-profile") ? $("evac-vehicle-profile").value : "LIGHT_VEHICLE";
+    const res = await postJSON("/api/v1/evacuation/nearest-shelter", {
+      origin: originCoords,
+      vehicle_profile: profile,
+      scenario_id: state.scenario || "S4",
+      lead_minutes: state.lead || 110
+    });
+    if (res.accessible_shelter_found) {
+      state.origin = originCoords;
+      state.dest = res.optimal_shelter.coordinates_utm;
+      state.evacRoute = res.route;
+      box.innerHTML = `
+        <div style="background:var(--panel-sub);padding:6px;border-radius:4px;border:1px solid var(--border);margin-top:4px">
+          <div style="color:var(--green);font-weight:600">✔ ${res.optimal_shelter.name}</div>
+          <div><b>Category:</b> ${res.optimal_shelter.category} (Cap: ${res.optimal_shelter.capacity_persons})</div>
+          <div><b>Travel Time:</b> ${res.route.travel_time_minutes.toFixed(1)} min · ${(res.route.total_distance_m/1000).toFixed(2)} km</div>
+          <div><b>Max Water Depth:</b> ${(res.route.max_depth_encountered_m*100).toFixed(0)} cm (${profile})</div>
+        </div>
+      `;
+      renderRoutePanel();
+      draw();
+    } else {
+      box.innerHTML = `<div class="err" style="font-size:10px">${res.status_message}</div>`;
+    }
+  } catch(e) {
+    box.innerHTML = `<div class="err" style="font-size:10px">Shelter routing error: ${e.message}</div>`;
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function showEvacuationCutoffTimeline() {
+  const box = $("evac-output");
+  const btn = $("btn-evac-cutoff");
+  if (!box || !btn) return;
+  if (!state.origin || !state.dest) {
+    box.innerHTML = `<div class="warn" style="font-size:10px">Set origin and destination first to evaluate cutoff window.</div>`;
+    return;
+  }
+  btn.disabled = true;
+  box.innerHTML = `<span style="color:var(--blue)">⏳ Evaluating 0–180m flood cutoff timeline…</span>`;
+  try {
+    const profile = $("evac-vehicle-profile") ? $("evac-vehicle-profile").value : "LIGHT_VEHICLE";
+    const res = await postJSON("/api/v1/evacuation/cutoff", {
+      origin: state.origin,
+      destination: state.dest,
+      vehicle_profile: profile,
+      scenario_id: state.scenario || "S4"
+    });
+    const cutoffText = res.evacuation_cutoff_minute !== null
+      ? `<b style="color:var(--red)">CUTOFF AT +${res.evacuation_cutoff_minute} min</b>`
+      : `<b style="color:var(--green)">PASSABLE THROUGHOUT NOWCAST</b>`;
+    box.innerHTML = `
+      <div style="background:var(--panel-sub);padding:6px;border-radius:4px;border:1px solid var(--border);margin-top:4px">
+        <div><b>Evacuation Window:</b> ${cutoffText}</div>
+        <div style="font-size:9px;color:var(--muted);margin-top:2px">
+          ${res.timeline.map(t => `+${t.lead_minutes}m: ${t.is_viable ? '✔ ' + t.travel_time_minutes.toFixed(0) + 'm' : '❌'}`).join(' · ')}
+        </div>
+      </div>
+    `;
+  } catch(e) {
+    box.innerHTML = `<div class="err" style="font-size:10px">Cutoff calculation error: ${e.message}</div>`;
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+let assetVulnerabilityData = null;
+
+async function loadVulnerabilityData() {
+  const cviBadge = $("cvi-badge");
+  const cviBar = $("cvi-bar");
+  const cviText = $("cvi-summary-text");
+  const list = $("vuln-priority-list");
+  if (!cviBadge || !list) return;
+  try {
+    const res = await postJSON("/api/v1/vulnerability/evaluate", {
+      scenario_id: state.scenario || "S4",
+      lead_minutes: state.lead || 110
+    });
+    assetVulnerabilityData = res;
+    const s = res.summary;
+    cviBadge.textContent = `${s.catchment_vulnerability_index.toFixed(1)} / 100`;
+    if (s.catchment_vulnerability_index > 50) {
+      cviBadge.style.color = "var(--red)";
+      cviBar.style.background = "var(--red)";
+    } else if (s.catchment_vulnerability_index > 20) {
+      cviBadge.style.color = "var(--amber)";
+      cviBar.style.background = "var(--amber)";
+    } else {
+      cviBadge.style.color = "var(--blue)";
+      cviBar.style.background = "var(--blue)";
+    }
+    cviBar.style.width = `${Math.min(100, s.catchment_vulnerability_index)}%`;
+    cviText.innerHTML = `
+      <b>${s.total_assets_monitored}</b> assets: 
+      <span style="color:var(--green)">${s.normal_count} normal</span> · 
+      <span style="color:var(--amber)">${s.access_impaired_count} access impaired</span> · 
+      <span style="color:var(--red)">${s.direct_inundation_count + s.critical_failure_count} flooded</span><br>
+      <b>Exposed Population:</b> ${Number(s.total_exposed_population).toLocaleString()} residents
+    `;
+
+    if (!res.priority_intervention_queue.length) {
+      list.innerHTML = `<div style="color:var(--green);padding:4px">✔ All critical facilities and access corridors operational.</div>`;
+    } else {
+      list.innerHTML = res.priority_intervention_queue.map((item, idx) => `
+        <div style="background:var(--panel-sub);padding:5px 7px;border-radius:4px;border:1px solid var(--border);margin-bottom:5px">
+          <div style="display:flex;justify-content:space-between;align-items:center">
+            <b>#${idx+1} ${item.name}</b>
+            <span class="tag" style="background:${item.operational_status==='CRITICAL_FAILURE'?'var(--red-bg)':(item.operational_status==='DIRECT_INUNDATION'?'rgba(232,135,30,0.2)':'rgba(232,200,48,0.2)')};color:${item.operational_status==='CRITICAL_FAILURE'?'var(--red)':(item.operational_status==='DIRECT_INUNDATION'?'var(--amber)':'#e8c830')};font-size:9px">
+              ${item.operational_status}
+            </span>
+          </div>
+          <div style="font-size:9px;color:var(--muted);margin-top:2px">
+            Site: ${(item.site_depth_m*100).toFixed(0)}cm · Ingress: ${(item.access_road_depth_m*100).toFixed(0)}cm · Pop: ${Number(item.impacted_population).toLocaleString()}
+          </div>
+          <div style="font-size:9px;color:var(--text);margin-top:2px">
+            👉 ${item.recommended_action}
+          </div>
+        </div>
+      `).join("");
+    }
+    draw();
+  } catch(e) {
+    if (list) list.innerHTML = `<div class="err" style="font-size:10px">Vulnerability error: ${e.message}</div>`;
+  }
+}
+
+$("btn-run-calib").onclick = runCalibration;
+$("btn-run-sens").onclick = runSensitivity;
+$("btn-screen-alert").onclick = screenAndIssueAlert;
+if ($("btn-blend-nowcast")) $("btn-blend-nowcast").onclick = blendNWPAndRadar;
+if ($("btn-generate-pdf")) $("btn-generate-pdf").onclick = generateAndOpenPDF;
+if ($("btn-run-mitigation")) $("btn-run-mitigation").onclick = runMitigationSimulation;
+if ($("btn-evac-shelter")) $("btn-evac-shelter").onclick = evacuateToNearestShelter;
+if ($("btn-evac-cutoff")) $("btn-evac-cutoff").onclick = showEvacuationCutoffTimeline;
+if ($("btn-refresh-vuln")) $("btn-refresh-vuln").onclick = loadVulnerabilityData;
+
+document.querySelectorAll(".tab-btn").forEach(btn => {
+  btn.onclick = () => {
+    document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
+    document.querySelectorAll(".tab-pane").forEach(p => p.classList.remove("active"));
+    btn.classList.add("active");
+    const target = $(btn.dataset.tab);
+    if (target) target.classList.add("active");
+  };
+});
+
 (async function init(){
   try {
     await getJSON("/api/v1/version");
@@ -1051,6 +1794,9 @@ async function loadRainfallStatus(){
       } else { throw e2; }
     }
     loadRainfallStatus();
+    loadNWPStatus();
+    loadMitigationStrategies();
+    loadVulnerabilityData();
   } catch(e){
     document.body.insertAdjacentHTML("afterbegin", `<div class="err" style="position:fixed;top:60px;left:10px;z-index:9">Failed to load: ${e.message}</div>`);
   }

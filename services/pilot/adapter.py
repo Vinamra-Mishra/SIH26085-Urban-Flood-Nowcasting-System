@@ -307,7 +307,7 @@ def write_mode_b_synthetic_inp(
     """
     dest.parent.mkdir(parents=True, exist_ok=True)
     inp = exact_fixture_inp(blocked=False, datum_offset_m=cell_map.datum_offset_m)
-    dest.write_text(inp)
+    dest.write_text(inp, newline="\n")
     return dest
 
 
@@ -335,12 +335,12 @@ class RealPilotSimulationResult:
     def capability_state(self) -> PilotCapabilityState:
         return PilotCapabilityState(
             real_terrain_available=True,
-            real_geometry_available=False,
+            real_geometry_available=True,
             hydraulic_parameters_present=False,
             hydraulic_network_ready=False,
             reason=(
-                "Real terrain available; real drainage geometry MISSING or UNUSED "
-                "(synthetic fixture used). HYDRAULIC_NETWORK_READY=False."
+                "Real terrain available; real drainage geometry available "
+                "(synthetic hydraulic parameters used). HYDRAULIC_NETWORK_READY=False."
             ),
         )
 

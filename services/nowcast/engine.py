@@ -239,3 +239,31 @@ class PersistenceNowcast:
             fingerprint=fp,
             metadata=rec.metadata,
         )
+
+
+def create_nowcast_engine(config: NowcastConfig | None = None) -> Any:
+    """Factory creating the appropriate nowcast engine based on config.method."""
+    cfg = config or NowcastConfig()
+    if cfg.method == NOWCAST_METHOD_PERSISTENCE:
+        return PersistenceNowcast(cfg)
+    elif cfg.method == "NOWCAST-ADVECTION-OF-V1":
+        from services.nowcast.advection import AdvectionConfig, AdvectionNowcastEngine
+        adv_cfg = AdvectionConfig(
+            lead_times_minutes=cfg.lead_times_minutes,
+            max_lead_minutes=cfg.max_lead_minutes,
+            status=cfg.status,
+            uncertainty=cfg.uncertainty,
+        )
+        return AdvectionNowcastEngine(adv_cfg)
+    elif cfg.method == "NOWCAST-NEURAL-V1":
+        from services.nowcast.neural_stub import NeuralNowcastConfig, NeuralNowcastEngine
+        neural_cfg = NeuralNowcastConfig(
+            lead_times_minutes=cfg.lead_times_minutes,
+            max_lead_minutes=cfg.max_lead_minutes,
+            status=cfg.status,
+            uncertainty=cfg.uncertainty,
+        )
+        return NeuralNowcastEngine(neural_cfg)
+    else:
+        return PersistenceNowcast(cfg)
+

@@ -179,9 +179,9 @@ def write_fixtures(data_dir: Path) -> dict[str, Path]:
         "blocked": data_dir / "drainage_synthetic_blocked.inp",
         "flood": data_dir / "drainage_synthetic_flood.inp",
     }
-    out["clean"].write_text(exact_fixture_inp(blocked=False))
-    out["blocked"].write_text(exact_fixture_inp(blocked=True))
-    out["flood"].write_text(flood_fixture_inp())
+    out["clean"].write_text(exact_fixture_inp(blocked=False), newline="\n")
+    out["blocked"].write_text(exact_fixture_inp(blocked=True), newline="\n")
+    out["flood"].write_text(flood_fixture_inp(), newline="\n")
     return out
 
 

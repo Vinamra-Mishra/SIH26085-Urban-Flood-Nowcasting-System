@@ -223,7 +223,7 @@ def test_m6_no_path_traversal_to_filesystem():
     for sid, lead in (("S1", 0), ("S4", 180)):
         p = store.artifact_tif_path(sid, lead)
         assert str(p).startswith(str(store.ARTIFACT_ROOT))
-        assert "data/demo/m5" in str(p)
+        assert "data/demo/m5" in p.as_posix()
 
 
 def test_m6_invalid_lead():
@@ -272,4 +272,4 @@ def test_m6_store_does_not_rerun_simulation():
     # artifact path derivation is internal (no client path accepted)
     p = store.artifact_tif_path("S1", 0)
     assert p.name == "depth_t000.tif"
-    assert str(p).endswith("data/demo/m5/s1/depth_t000.tif")
+    assert p.as_posix().endswith("data/demo/m5/s1/depth_t000.tif")

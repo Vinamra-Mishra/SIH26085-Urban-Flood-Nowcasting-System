@@ -141,6 +141,61 @@ def compute_far(
     return float(false_alarms / denom) if denom > 0 else 0.0
 
 
+def compute_ets(
+    forecast: np.ndarray,
+    observed: np.ndarray,
+    threshold: float = 0.1,
+) -> float:
+    """Equitable Threat Score (ETS / Gilbert Skill Score) for a threshold (mm/h).
+
+    ETS = (hits - hits_random) / (hits + misses + false_alarms - hits_random)
+    where hits_random = (hits + misses) * (hits + false_alarms) / total_cells
+    """
+    f_rain = forecast >= threshold
+    o_rain = observed >= threshold
+    hits = np.sum(f_rain & o_rain)
+    misses = np.sum(~f_rain & o_rain)
+    false_alarms = np.sum(f_rain & ~o_rain)
+    total = float(forecast.size)
+    if total == 0:
+        return 0.0
+
+    hits_random = float((hits + misses) * (hits + false_alarms)) / total
+    denom = (hits + misses + false_alarms) - hits_random
+    return float((hits - hits_random) / denom) if denom > 0 else 0.0
+
+
+def compute_fss(
+    forecast: np.ndarray,
+    observed: np.ndarray,
+    threshold: float = 1.0,
+    window_size: int = 5,
+) -> float:
+    """Fractions Skill Score (FSS) over spatial neighborhood windows (Roberts & Lean 2008)."""
+    f_bin = (forecast >= threshold).astype(np.float64)
+    o_bin = (observed >= threshold).astype(np.float64)
+    
+    # 2D moving average over window_size
+    pad = window_size // 2
+    f_pad = np.pad(f_bin, pad, mode="constant", constant_values=0.0)
+    o_pad = np.pad(o_bin, pad, mode="constant", constant_values=0.0)
+
+    h, w = forecast.shape
+    f_frac = np.zeros_like(f_bin)
+    o_frac = np.zeros_like(o_bin)
+
+    for i in range(h):
+        for j in range(w):
+            f_frac[i, j] = np.mean(f_pad[i : i + window_size, j : j + window_size])
+            o_frac[i, j] = np.mean(o_pad[i : i + window_size, j : j + window_size])
+
+    mse = np.mean((f_frac - o_frac) ** 2)
+    mse_ref = np.mean(f_frac ** 2) + np.mean(o_frac ** 2)
+    if mse_ref <= 1e-12:
+        return 1.0 if mse <= 1e-12 else 0.0
+    return float(1.0 - (mse / mse_ref))
+
+
 def verify_pair(
     forecast: np.ndarray,
     observed: np.ndarray,
@@ -170,6 +225,7 @@ def verify_pair(
         "csi": compute_csi(forecast, observed, rain_threshold_mmh),
         "pod": compute_pod(forecast, observed, rain_threshold_mmh),
         "far": compute_far(forecast, observed, rain_threshold_mmh),
+        "ets": compute_ets(forecast, observed, rain_threshold_mmh),
     }
     return VerificationResult(
         status=VerificationStatus.EVALUATED,
@@ -178,6 +234,36 @@ def verify_pair(
         method="pairwise_comparison",
         notes=f"rain_threshold={rain_threshold_mmh} mm/h",
     )
+
+
+def compute_multi_threshold_verification(
+    forecast: np.ndarray,
+    observed: np.ndarray,
+    thresholds: tuple[float, ...] = (0.1, 1.0, 5.0, 15.0, 30.0),
+) -> dict[str, Any]:
+    """Compute categorical skill scores across multiple rainfall intensity thresholds."""
+    if forecast.shape != observed.shape:
+        return {"status": VerificationStatus.INSUFFICIENT_DATA, "thresholds": {}}
+
+    res: dict[str, Any] = {
+        "status": VerificationStatus.EVALUATED,
+        "continuous": {
+            "mae_mmh": compute_mae(forecast, observed),
+            "rmse_mmh": compute_rmse(forecast, observed),
+            "bias_mmh": compute_bias(forecast, observed),
+            "correlation": compute_correlation(forecast, observed),
+        },
+        "thresholds": {},
+    }
+    for th in thresholds:
+        res["thresholds"][f"th_{th}_mmh"] = {
+            "threshold_mmh": th,
+            "csi": compute_csi(forecast, observed, th),
+            "pod": compute_pod(forecast, observed, th),
+            "far": compute_far(forecast, observed, th),
+            "ets": compute_ets(forecast, observed, th),
+        }
+    return res
 
 
 def no_evaluation_available(reason: str = "") -> VerificationResult:
@@ -193,3 +279,4 @@ def no_evaluation_available(reason: str = "") -> VerificationResult:
             "Status is NOT_EVALUATED — no skill scores are fabricated."
         ),
     )
+

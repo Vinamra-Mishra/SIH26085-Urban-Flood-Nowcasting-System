@@ -3,7 +3,7 @@
     "description": "Provisional extreme rainfall event (90 mm/3 h).",
     "drainage_configuration": {
       "blockage": null,
-      "network_asset_uri": "data/demo/drainage_synthetic.inp",
+      "network_asset_uri": "data\\demo\\drainage_synthetic.inp",
       "parameter_status": {
         "all": "assumed"
       }
@@ -16,7 +16,7 @@
     "name": "Extreme rainfall",
     "provenance": {
       "acquired_at": "2026-08-21T00:00:00Z",
-      "content_sha256": "8157e3e9191d855e07397673df0a5b5c7f8fcf987f7c386eb2e554dba6884b71",
+      "content_sha256": "227b21bedb9fccf9f75745aa02ca66efdf76f4d95161a52668a7cd8fe950f18d",
       "dataset_id": "synthetic_wb_fixture_v1_dem",
       "licence_id": "internal-generated",
       "native_crs": "EPSG:32645",
@@ -39,18 +39,18 @@
     "rainfall_profile": {
       "derivation": "Alternating-block method (Chow et al. 1988) from provisional depth-duration P(d)=P60*(d/60)^0.4. PROVISIONAL: final M5 parameters require published pilot-region IDF or documented historical event with hydrologist approval (D-016).",
       "intensities_mmh": [
-        42.5707809996361,
-        25.21614149234523,
-        19.188830377091733,
-        15.920716215695847,
-        13.81174408506763,
         12.314101855626348,
+        13.81174408506763,
+        15.920716215695847,
+        19.188830377091733,
+        25.21614149234523,
+        42.5707809996361,
         133.2385820953752,
-        13.00571162542542,
-        14.766562283690803,
-        17.352181962622296,
+        30.95634080445501,
         21.65830620296839,
-        30.95634080445501
+        17.352181962622296,
+        14.766562283690803,
+        13.00571162542542
       ],
       "interval_minutes": 15,
       "profile_id": "extreme_v1",
@@ -106,7 +106,7 @@
         "implementation_note": "effective-opening reduction; hydraulic change, not a UI label",
         "start_minutes": 60
       },
-      "network_asset_uri": "data/demo/drainage_synthetic.inp",
+      "network_asset_uri": "data\\demo\\drainage_synthetic.inp",
       "parameter_status": {
         "all": "assumed"
       }
@@ -119,7 +119,7 @@
     "name": "Extreme rainfall + drainage blockage",
     "provenance": {
       "acquired_at": "2026-08-21T00:00:00Z",
-      "content_sha256": "8157e3e9191d855e07397673df0a5b5c7f8fcf987f7c386eb2e554dba6884b71",
+      "content_sha256": "227b21bedb9fccf9f75745aa02ca66efdf76f4d95161a52668a7cd8fe950f18d",
       "dataset_id": "synthetic_wb_fixture_v1_dem",
       "licence_id": "internal-generated",
       "native_crs": "EPSG:32645",
@@ -142,18 +142,18 @@
     "rainfall_profile": {
       "derivation": "Alternating-block method (Chow et al. 1988) from provisional depth-duration P(d)=P60*(d/60)^0.4. PROVISIONAL: final M5 parameters require published pilot-region IDF or documented historical event with hydrologist approval (D-016).",
       "intensities_mmh": [
-        42.5707809996361,
-        25.21614149234523,
-        19.188830377091733,
-        15.920716215695847,
-        13.81174408506763,
         12.314101855626348,
+        13.81174408506763,
+        15.920716215695847,
+        19.188830377091733,
+        25.21614149234523,
+        42.5707809996361,
         133.2385820953752,
-        13.00571162542542,
-        14.766562283690803,
-        17.352181962622296,
+        30.95634080445501,
         21.65830620296839,
-        30.95634080445501
+        17.352181962622296,
+        14.766562283690803,
+        13.00571162542542
       ],
       "interval_minutes": 15,
       "profile_id": "extreme_blockage_v1",
@@ -200,7 +200,7 @@
     "description": "Provisional heavy rainfall event (45 mm/3 h).",
     "drainage_configuration": {
       "blockage": null,
-      "network_asset_uri": "data/demo/drainage_synthetic.inp",
+      "network_asset_uri": "data\\demo\\drainage_synthetic.inp",
       "parameter_status": {
         "all": "assumed"
       }
@@ -213,7 +213,7 @@
     "name": "Heavy rainfall",
     "provenance": {
       "acquired_at": "2026-08-21T00:00:00Z",
-      "content_sha256": "8157e3e9191d855e07397673df0a5b5c7f8fcf987f7c386eb2e554dba6884b71",
+      "content_sha256": "227b21bedb9fccf9f75745aa02ca66efdf76f4d95161a52668a7cd8fe950f18d",
       "dataset_id": "synthetic_wb_fixture_v1_dem",
       "licence_id": "internal-generated",
       "native_crs": "EPSG:32645",
@@ -236,18 +236,18 @@
     "rainfall_profile": {
       "derivation": "Alternating-block method (Chow et al. 1988) from provisional depth-duration P(d)=P60*(d/60)^0.4. PROVISIONAL: final M5 parameters require published pilot-region IDF or documented historical event with hydrologist approval (D-016).",
       "intensities_mmh": [
-        21.28539049981805,
-        12.608070746172615,
-        9.594415188545867,
-        7.960358107847924,
-        6.905872042533815,
         6.157050927813174,
+        6.905872042533815,
+        7.960358107847924,
+        9.594415188545867,
+        12.608070746172615,
+        21.28539049981805,
         66.6192910476876,
-        6.50285581271271,
-        7.383281141845401,
-        8.676090981311148,
+        15.478170402227505,
         10.829153101484195,
-        15.478170402227505
+        8.676090981311148,
+        7.383281141845401,
+        6.50285581271271
       ],
       "interval_minutes": 15,
       "profile_id": "heavy_v1",
@@ -294,7 +294,7 @@
     "description": "Provisional normal rainfall event (20 mm/3 h).",
     "drainage_configuration": {
       "blockage": null,
-      "network_asset_uri": "data/demo/drainage_synthetic.inp",
+      "network_asset_uri": "data\\demo\\drainage_synthetic.inp",
       "parameter_status": {
         "all": "assumed"
       }
@@ -307,7 +307,7 @@
     "name": "Normal rainfall",
     "provenance": {
       "acquired_at": "2026-08-21T00:00:00Z",
-      "content_sha256": "8157e3e9191d855e07397673df0a5b5c7f8fcf987f7c386eb2e554dba6884b71",
+      "content_sha256": "227b21bedb9fccf9f75745aa02ca66efdf76f4d95161a52668a7cd8fe950f18d",
       "dataset_id": "synthetic_wb_fixture_v1_dem",
       "licence_id": "internal-generated",
       "native_crs": "EPSG:32645",
@@ -330,18 +330,18 @@
     "rainfall_profile": {
       "derivation": "Alternating-block method (Chow et al. 1988) from provisional depth-duration P(d)=P60*(d/60)^0.4. PROVISIONAL: final M5 parameters require published pilot-region IDF or documented historical event with hydrologist approval (D-016).",
       "intensities_mmh": [
-        9.460173555474686,
-        5.603586998298951,
-        4.264184528242602,
-        3.5379369368213105,
-        3.0692764633483733,
         2.736467079028074,
+        3.069276463348359,
+        3.5379369368213105,
+        4.264184528242602,
+        5.603586998298951,
+        9.460173555474686,
         29.60857379897227,
-        2.8901581389834234,
-        3.2814582852646055,
-        3.8560404361382865,
+        6.87918684543444,
         4.812956933992979,
-        6.87918684543444
+        3.8560404361382865,
+        3.2814582852646197,
+        2.8901581389834234
       ],
       "interval_minutes": 15,
       "profile_id": "normal_v1",

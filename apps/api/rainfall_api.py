@@ -28,6 +28,7 @@ from services.nowcast.providers import (
     RainfallProvider,
 )
 from services.nowcast.providers.fixture_provider import FixtureRainfallProvider
+from services.nowcast.providers.radar_provider import RadarRainfallProvider
 from services.nowcast.providers.synthetic_provider import SyntheticRainfallProvider
 from services.nowcast.quality import (
     DataFreshness,
@@ -50,7 +51,7 @@ _engine = PersistenceNowcast(_nowcast_config)
 
 
 def _init_default_providers() -> None:
-    """Initialize default providers (synthetic + fixture)."""
+    """Initialize default providers (synthetic + fixture + radar)."""
     global _active_provider_id
 
     grid_shape = (DEFAULT_GRID_CELLS, DEFAULT_GRID_CELLS)
@@ -78,6 +79,14 @@ def _init_default_providers() -> None:
         scenario_label="S3_EXTREME_FIXTURE",
     )
     _default_providers["fixture-extreme-v1"] = fixture
+
+    # Radar provider (Doppler Weather Radar)
+    radar = RadarRainfallProvider(
+        provider_id="dwr-kolkata-v1",
+        source_name="IMD Doppler Weather Radar (Kolkata S-Band)",
+        grid_shape=grid_shape,
+    )
+    _default_providers["dwr-kolkata-v1"] = radar
 
     # Default active provider is the synthetic one (NOT real data)
     _active_provider_id = "synthetic-v1"

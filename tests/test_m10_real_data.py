@@ -1686,11 +1686,11 @@ class TestRealPilotArtifactExecution:
 
         doc = json.loads(ACQUISITION_EVIDENCE.read_text())
         attempts = doc["attempts"]
-        by_path = {a["artifact_path"]: a for a in attempts if a["outcome"] == "FETCHED"}
+        by_path = {Path(a["artifact_path"]).as_posix(): a for a in attempts if a["outcome"] == "FETCHED"}
         for path, expected_sha in (
-            (str(REAL_DEM), REAL_DEM_SHA256),
-            (str(REAL_DRAINS), REAL_DRAINS_SHA256),
-            (str(REAL_VENTS), REAL_VENTS_SHA256),
+            (REAL_DEM.as_posix(), REAL_DEM_SHA256),
+            (REAL_DRAINS.as_posix(), REAL_DRAINS_SHA256),
+            (REAL_VENTS.as_posix(), REAL_VENTS_SHA256),
         ):
             rec = by_path[path]
             assert rec["artifact_sha256"] == expected_sha

@@ -25,7 +25,7 @@ from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import HTMLResponse, JSONResponse, Response
 from pydantic import BaseModel, Field
 
-from apps.api import impacts, pilot, projections, rainfall_api, render, store
+from apps.api import alerts_api, calibration_api, evacuation_api, impacts, mitigation_api, nwp_api, optimization_api, pilot, probabilistic_api, projections, rainfall_api, render, reports_api, store, validation_api, vulnerability_api
 from services.nowcast import NOWCAST_VERSION
 from services.projection import MODEL_VERSION as PROJECTION_VERSION
 from services.projection.pipeline import ProjectionUnavailableError
@@ -33,13 +33,23 @@ from services.routing.policy import POLICY
 from services.scenarios import MODEL_VERSION
 from services.scenarios.profiles import D016_HUMAN_REVIEW, D016_STATUS
 
-API_VERSION = "1.3.0"
-APP_TITLE = "UFNS — Urban Flood Nowcasting System (M9 persistence impact projection)"
+API_VERSION = "2.2.0"
+APP_TITLE = "UFNS — Urban Flood Nowcasting System (Coupled 1D/2D + Probabilistic Forecasting)"
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 INDEX_HTML = REPO_ROOT / "apps" / "web" / "index.html"
 
 app = FastAPI(title=APP_TITLE, version=API_VERSION)
+app.include_router(calibration_api.router)
+app.include_router(alerts_api.router)
+app.include_router(nwp_api.router)
+app.include_router(reports_api.router)
+app.include_router(mitigation_api.router)
+app.include_router(evacuation_api.router)
+app.include_router(vulnerability_api.router)
+app.include_router(validation_api.router)
+app.include_router(optimization_api.router)
+app.include_router(probabilistic_api.router)
 
 
 # ---------------------------------------------------------------------------
@@ -70,7 +80,7 @@ def _store_not_ready() -> HTTPException:
 
 
 VALID_LEADS = tuple(range(0, 181, 5))
-VALID_PROJECTION_LEADS = (0, 15, 30, 45, 60)
+VALID_PROJECTION_LEADS = (0, 15, 30, 45, 60, 75, 90, 105, 120, 135, 150, 165, 180)
 VALID_ROUTE_MODES = ("flood_aware", "avoid_impassable")
 VALID_PROJECTION_CONFIG_IDS = tuple(projections.PROJECTION_CONFIGS.keys())
 # Projected EPSG:32645 domain bounds (matches the synthetic fixture).
@@ -130,7 +140,7 @@ class RouteRequest(BaseModel):
 
 
 class ProjectionRouteRequest(BaseModel):
-    lead: int = Field(ge=0, le=60)
+    lead: int = Field(ge=0, le=180)
     origin: list[float] = Field(min_length=2, max_length=2)
     destination: list[float] = Field(min_length=2, max_length=2)
     mode: Literal["flood_aware", "avoid_impassable"] = "flood_aware"
