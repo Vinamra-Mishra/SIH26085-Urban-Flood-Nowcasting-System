@@ -73,7 +73,7 @@ def evaluate_alerts(req: EvaluateAlertRequest) -> dict[str, Any]:
     try:
         depth_grid = impacts.depth_grid(req.scenario_id, req.lead_minutes)
         raw_impacts = impacts.impacts_at(req.scenario_id, req.lead_minutes)
-        road_impacts = [imp.to_dict() for imp in raw_impacts.values()]
+        road_impacts = [imp.to_dict() if hasattr(imp, "to_dict") else imp for imp in raw_impacts.values()]
     except Exception as exc:
         raise HTTPException(
             status_code=404,

@@ -1,0 +1,51 @@
+{
+  "status": "OPERATIONAL_LIVE_FEEDS_SYNCED",
+  "synced_at": "2026-08-27T06:54:04.255472+00:00",
+  "files": {
+    "radar_index.json": {
+      "size_bytes": 776,
+      "sha256": "469d56c342a7e79dc3e249618f6dce9ff6acc04ee3132d34e691ac5737e52ed2",
+      "updated_at": "2026-08-27T06:53:35.616456+00:00"
+    },
+    "mumbai/live_precipitation.json": {
+      "size_bytes": 10842,
+      "sha256": "ae90a3f0a4b618583a6adec054acb31f3984d92fedbabc5df2d88bdd9aada133",
+      "updated_at": "2026-08-27T06:53:36.351253+00:00"
+    },
+    "mumbai/nwp_forecast.json": {
+      "size_bytes": 7153,
+      "sha256": "5730f1f87588f1bba37480c9e4752703c54b94c02257fab15457238f592aee16",
+      "updated_at": "2026-08-27T06:53:37.105854+00:00"
+    },
+    "mumbai/marine_tide_surge.json": {
+      "size_bytes": 10785,
+      "sha256": "6ebf3b81db2c3275e649f1a7e74b87a73027febdf077655eb4396515e12ebc3d",
+      "updated_at": "2026-08-27T06:53:37.870482+00:00"
+    },
+    "mumbai/iot_gauges.json": {
+      "size_bytes": 1662,
+      "sha256": "79e50c11849ee8b50dfbe544c9992ebf857fd4878aca251e1a531aa0cda51546",
+      "updated_at": "2026-08-27T06:53:49.892110+00:00"
+    },
+    "vijayawada/live_precipitation.json": {
+      "size_bytes": 10802,
+      "sha256": "7644cd90f3141f7c58c81ef13892667350c6255b34d64c8052c7353c690b4d0c",
+      "updated_at": "2026-08-27T06:53:50.607774+00:00"
+    },
+    "vijayawada/nwp_forecast.json": {
+      "size_bytes": 7002,
+      "sha256": "246ea7cbcb62992d776bb021ff240f4fe860fafa41dcf74d765bbdfceef112d5",
+      "updated_at": "2026-08-27T06:53:51.432417+00:00"
+    },
+    "vijayawada/krishna_river_discharge.json": {
+      "size_bytes": 894,
+      "sha256": "dae6c9db416017fc570eae5f092c71e577122fc59f1eadf76753d9c75b6c0fe2",
+      "updated_at": "2026-08-27T06:53:52.111627+00:00"
+    },
+    "vijayawada/iot_gauges.json": {
+      "size_bytes": 2,
+      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "updated_at": "2026-08-27T06:54:04.255472+00:00"
+    }
+  }
+}

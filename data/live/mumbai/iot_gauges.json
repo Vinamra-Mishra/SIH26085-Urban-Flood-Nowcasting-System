@@ -1,0 +1,61 @@
+[
+  {
+    "_id": "6058650aafd734001b28be77",
+    "createdAt": "2021-03-22T09:36:10.156Z",
+    "updatedAt": "2021-09-15T07:16:01.103Z",
+    "name": "CHe Mumbai",
+    "currentLocation": {
+      "timestamp": "2021-03-22T09:36:10.149Z",
+      "coordinates": [
+        72.804427,
+        18.963813
+      ],
+      "type": "Point"
+    },
+    "exposure": "outdoor",
+    "sensors": [
+      {
+        "title": "PM10",
+        "unit": "\u00b5g/m\u00b3",
+        "sensorType": "SDS 011",
+        "icon": "osem-cloud",
+        "_id": "6058650aafd734001b28be7c",
+        "lastMeasurement": "61419db199eb9a001bbd97af"
+      },
+      {
+        "title": "PM2.5",
+        "unit": "\u00b5g/m\u00b3",
+        "sensorType": "SDS 011",
+        "icon": "osem-cloud",
+        "_id": "6058650aafd734001b28be7b",
+        "lastMeasurement": "61419db199eb9a001bbd97b0"
+      },
+      {
+        "title": "Temperatur",
+        "unit": "\u00b0C",
+        "sensorType": "BME280",
+        "icon": "osem-thermometer",
+        "_id": "6058650aafd734001b28be7a",
+        "lastMeasurement": "611f93b5b09114001b61da4f"
+      },
+      {
+        "title": "rel. Luftfeuchte",
+        "unit": "%",
+        "sensorType": "BME280",
+        "icon": "osem-humidity",
+        "_id": "6058650aafd734001b28be79",
+        "lastMeasurement": "611f93b5b09114001b61da51"
+      },
+      {
+        "title": "Luftdruck",
+        "unit": "Pa",
+        "sensorType": "BME280",
+        "icon": "osem-barometer",
+        "_id": "6058650aafd734001b28be78",
+        "lastMeasurement": "611f93b5b09114001b61da50"
+      }
+    ],
+    "model": "luftdaten_sds011_bme280",
+    "lastMeasurementAt": "2021-09-15T07:16:01.099Z"
+  }
+]

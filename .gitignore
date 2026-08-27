@@ -24,6 +24,10 @@ data/raw/*
 !data/raw/.gitkeep
 data/processed/*
 !data/processed/.gitkeep
+data/DEM/*.zip
+data/DEM/**/*.zip
+data/DEM/*.tif
+data/DEM/**/*.tif
 *.tif.aux.xml
 
 # Node

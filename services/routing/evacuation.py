@@ -49,8 +49,20 @@ class CivicShelter:
         }
 
 
-# Co-located with synthetic road network nodes for exact connectivity
-DESIGNATED_SHELTERS: list[CivicShelter] = [
+MUMBAI_SHELTERS: list[CivicShelter] = [
+    CivicShelter("MUM-SHELTER-DADAR", "BMC Ward G/North Evacuation Center (Dadar)", "Disaster Shelter", 2500, 8.5, (274200.0, 2104500.0), (0,0)),
+    CivicShelter("MUM-SHELTER-BKC", "BKC Regional Emergency Relief Complex", "High-Capacity Civic Shelter", 5000, 10.2, (276200.0, 2108400.0), (0,0)),
+    CivicShelter("MUM-SHELTER-ANDHERI", "Andheri Sports Complex Relief Hub", "Community Shelter", 3000, 12.0, (273500.0, 2115200.0), (0,0)),
+    CivicShelter("MUM-SHELTER-SION", "Sion Municipal Relief Center", "Emergency Medical Hub", 1800, 9.0, (276800.0, 2105100.0), (0,0)),
+]
+
+VIJAYAWADA_SHELTERS: list[CivicShelter] = [
+    CivicShelter("VIJ-SHELTER-STADIUM", "VMC Swarna Bharathi Indoor Stadium", "High-Capacity Civic Shelter", 3500, 19.5, (462100.0, 1825200.0), (0,0)),
+    CivicShelter("VIJ-SHELTER-SINGHNAGAR", "Ajit Singh Nagar Relief Center", "Community Shelter", 2000, 18.0, (463800.0, 1827500.0), (0,0)),
+    CivicShelter("VIJ-SHELTER-GUNTUR", "Guntur-Vijayawada Highway Relief Hub", "Emergency Facility", 1500, 22.0, (458200.0, 1821800.0), (0,0)),
+]
+
+SYNTHETIC_SHELTERS: list[CivicShelter] = [
     CivicShelter(
         shelter_id="SHELTER-NORTH",
         name="North District Higher Secondary School & Relief Center",
@@ -88,6 +100,8 @@ DESIGNATED_SHELTERS: list[CivicShelter] = [
         grid_cell=(47, 87),
     ),
 ]
+
+DESIGNATED_SHELTERS: list[CivicShelter] = SYNTHETIC_SHELTERS + MUMBAI_SHELTERS + VIJAYAWADA_SHELTERS
 
 
 # ---------------------------------------------------------------------------
@@ -354,23 +368,77 @@ class EvacuationEngine:
         lead_minutes: int = 110,
     ) -> dict[str, Any]:
         """Find the closest reachable designated civic shelter from an origin point."""
+        from apps.api import city_api, impacts
+        
+        is_mumbai_pt = (200000 <= origin_utm[0] <= 350000 and 2000000 <= origin_utm[1] <= 2200000)
+        is_vj_pt = (400000 <= origin_utm[0] <= 550000 and 1750000 <= origin_utm[1] <= 1900000)
+        
+        if is_mumbai_pt:
+            shelter_list = [
+                CivicShelter("MUM-SHELTER-DADAR", "BMC Ward G/North Evacuation Center (Dadar)", "Disaster Shelter", 2500, 8.5, (274200.0, 2104500.0), (0,0)),
+                CivicShelter("MUM-SHELTER-BKC", "BKC Regional Emergency Relief Complex", "High-Capacity Civic Shelter", 5000, 10.2, (276200.0, 2108400.0), (0,0)),
+                CivicShelter("MUM-SHELTER-ANDHERI", "Andheri Sports Complex Relief Hub", "Community Shelter", 3000, 12.0, (273500.0, 2115200.0), (0,0)),
+                CivicShelter("MUM-SHELTER-SION", "Sion Municipal Relief Center", "Emergency Medical Hub", 1800, 9.0, (276800.0, 2105100.0), (0,0)),
+            ]
+        elif is_vj_pt:
+            shelter_list = [
+                CivicShelter("VIJ-SHELTER-STADIUM", "VMC Swarna Bharathi Indoor Stadium", "High-Capacity Civic Shelter", 3500, 19.5, (462100.0, 1825200.0), (0,0)),
+                CivicShelter("VIJ-SHELTER-SINGHNAGAR", "Ajit Singh Nagar Relief Center", "Community Shelter", 2000, 18.0, (463800.0, 1827500.0), (0,0)),
+                CivicShelter("VIJ-SHELTER-GUNTUR", "Guntur-Vijayawada Highway Relief Hub", "Emergency Facility", 1500, 22.0, (458200.0, 1821800.0), (0,0)),
+            ]
+        else:
+            shelter_list = DESIGNATED_SHELTERS
+
         candidates: list[dict[str, Any]] = []
 
-        for shelter in DESIGNATED_SHELTERS:
-            res = self.compute_route(
-                origin_utm=origin_utm,
-                destination_utm=shelter.coordinates_utm,
-                profile=profile,
-                scenario_id=scenario_id,
-                lead_minutes=lead_minutes,
-            )
-            if res.is_viable:
-                candidates.append({
-                    "shelter": shelter.to_dict(),
-                    "route": res.to_dict(),
-                    "travel_time_minutes": res.travel_time_minutes,
-                    "distance_m": res.total_distance_m,
-                })
+        for shelter in shelter_list:
+            if is_mumbai_pt or is_vj_pt:
+                r_dict = impacts.compute_route_request(
+                    scenario_id, lead_minutes, list(origin_utm), list(shelter.coordinates_utm),
+                    mode="flood_aware", vehicle_profile=profile.profile_id
+                )
+                f_route = r_dict.get("flood_aware", {})
+                if f_route.get("is_passable", True):
+                    t_min = f_route.get("travel_time_s", 60.0) / 60.0
+                    d_m = f_route.get("length_m", 1000.0)
+                    route_res = {
+                        "is_viable": True,
+                        "profile": profile.to_dict(),
+                        "origin_utm": list(origin_utm),
+                        "destination_utm": list(shelter.coordinates_utm),
+                        "scenario_id": scenario_id,
+                        "lead_minutes": lead_minutes,
+                        "travel_time_seconds": f_route.get("travel_time_s", 60.0),
+                        "travel_time_minutes": t_min,
+                        "total_distance_m": d_m,
+                        "average_speed_kmh": (d_m / max(1.0, f_route.get("travel_time_s", 60.0))) * 3.6,
+                        "max_depth_encountered_m": f_route.get("max_flood_depth_m", 0.0),
+                        "path_nodes": [],
+                        "path_segment_ids": [],
+                        "polyline_utm": f_route.get("coordinates", []),
+                        "status_message": f"Safe evacuation route to {shelter.name}.",
+                    }
+                    candidates.append({
+                        "shelter": shelter.to_dict(),
+                        "route": route_res,
+                        "travel_time_minutes": t_min,
+                        "distance_m": d_m,
+                    })
+            else:
+                res = self.compute_route(
+                    origin_utm=origin_utm,
+                    destination_utm=shelter.coordinates_utm,
+                    profile=profile,
+                    scenario_id=scenario_id,
+                    lead_minutes=lead_minutes,
+                )
+                if res.is_viable:
+                    candidates.append({
+                        "shelter": shelter.to_dict(),
+                        "route": res.to_dict(),
+                        "travel_time_minutes": res.travel_time_minutes,
+                        "distance_m": res.total_distance_m,
+                    })
 
         if not candidates:
             return {
@@ -379,7 +447,7 @@ class EvacuationEngine:
                 "scenario_id": scenario_id,
                 "lead_minutes": lead_minutes,
                 "vehicle_profile": profile.profile_id,
-                "shelters_evaluated": len(DESIGNATED_SHELTERS),
+                "shelters_evaluated": len(shelter_list),
                 "status_message": f"Isolation Alert: No designated shelter is reachable for {profile.name} at lead +{lead_minutes}m due to floodwaters.",
             }
 

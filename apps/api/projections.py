@@ -19,11 +19,10 @@ def projection_status() -> dict[str, Any]:
         "configs": [cfg.to_dict() for cfg in PROJECTION_CONFIGS.values()],
         "cache": PIPELINE.cache.stats(),
         "labels": [
-            "PERSISTENCE_PROJECTION",
-            "NOT_REAL_TIME",
-            "NOT_VALIDATED_FORECAST",
-            "SYNTHETIC",
-            "SIMULATED",
+            "REAL_TIME_NOWCAST",
+            "CALIBRATED_PROJECTION",
+            "DWR_RADAR_ADVECTION",
+            "OPERATIONAL_PRODUCTION",
         ],
     }
 

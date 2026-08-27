@@ -19,13 +19,13 @@ from __future__ import annotations
 import math
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Literal, Optional
 
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import HTMLResponse, JSONResponse, Response
 from pydantic import BaseModel, Field
 
-from apps.api import alerts_api, calibration_api, evacuation_api, impacts, mitigation_api, nwp_api, optimization_api, pilot, probabilistic_api, projections, rainfall_api, render, reports_api, store, validation_api, vulnerability_api
+from apps.api import alerts_api, calibration_api, city_api, evacuation_api, impacts, mitigation_api, nwp_api, optimization_api, pilot, probabilistic_api, projections, rainfall_api, render, reports_api, store, validation_api, vulnerability_api
 from services.nowcast import NOWCAST_VERSION
 from services.projection import MODEL_VERSION as PROJECTION_VERSION
 from services.projection.pipeline import ProjectionUnavailableError
@@ -40,6 +40,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 INDEX_HTML = REPO_ROOT / "apps" / "web" / "index.html"
 
 app = FastAPI(title=APP_TITLE, version=API_VERSION)
+app.include_router(city_api.router)
 app.include_router(calibration_api.router)
 app.include_router(alerts_api.router)
 app.include_router(nwp_api.router)
@@ -117,16 +118,20 @@ def _require_projection_lead(lead: int) -> None:
 
 
 def _validate_xy(name: str, xy: list[float]) -> tuple[float, float]:
-    """Validate a projected [x, y] coordinate against the fixture domain."""
+    """Validate a projected [x, y] coordinate against active city bounds."""
     if len(xy) != 2 or not all(isinstance(v, (int, float)) and math.isfinite(v) for v in xy):
         raise _error(400, "INVALID_COORDINATES",
                      f"{name} must be [x, y] with two finite numbers")
     x, y = float(xy[0]), float(xy[1])
-    if not (_DOMAIN_XMIN <= x <= _DOMAIN_XMAX and _DOMAIN_YMIN <= y <= _DOMAIN_YMAX):
+    gm = impacts.grid_metadata()
+    b = gm.get("bounds", [_DOMAIN_XMIN, _DOMAIN_YMIN, _DOMAIN_XMAX, _DOMAIN_YMAX])
+    pad_x = max(1000.0, (b[2] - b[0]) * 0.15)
+    pad_y = max(1000.0, (b[3] - b[1]) * 0.15)
+    if not (b[0] - pad_x <= x <= b[2] + pad_x and b[1] - pad_y <= y <= b[3] + pad_y):
         raise _error(
             400, "COORDINATES_OUT_OF_RANGE",
-            f"{name} {xy} is outside the synthetic fixture domain",
-            domain_bounds=[_DOMAIN_XMIN, _DOMAIN_YMIN, _DOMAIN_XMAX, _DOMAIN_YMAX],
+            f"{name} {xy} is outside the active domain",
+            domain_bounds=b,
         )
     return x, y
 
@@ -136,14 +141,22 @@ class RouteRequest(BaseModel):
     lead: int = Field(ge=0, le=180)
     origin: list[float] = Field(min_length=2, max_length=2)
     destination: list[float] = Field(min_length=2, max_length=2)
-    mode: Literal["flood_aware", "avoid_impassable"] = "flood_aware"
+    mode: Literal["flood_aware", "avoid_impassable", "baseline"] = "flood_aware"
+    vehicle_profile: Optional[str] = "LIGHT_VEHICLE"
+    max_wading_depth_m: Optional[float] = None
 
 
 class ProjectionRouteRequest(BaseModel):
     lead: int = Field(ge=0, le=180)
     origin: list[float] = Field(min_length=2, max_length=2)
     destination: list[float] = Field(min_length=2, max_length=2)
-    mode: Literal["flood_aware", "avoid_impassable"] = "flood_aware"
+    mode: Literal["flood_aware", "avoid_impassable", "baseline"] = "flood_aware"
+    vehicle_profile: Optional[str] = "LIGHT_VEHICLE"
+    max_wading_depth_m: Optional[float] = None
+
+
+RouteRequest.model_rebuild()
+ProjectionRouteRequest.model_rebuild()
 
 
 # ---------------------------------------------------------------------------
@@ -195,6 +208,8 @@ def health() -> dict[str, Any]:
     return {
         "status": status,
         "app": "ufns-m9",
+        "active_city": city_api.ACTIVE_CITY,
+        "active_city_metadata": city_api.CITY_METADATA.get(city_api.ACTIVE_CITY, {}),
         "api_version": API_VERSION,
         "model_version": MODEL_VERSION,
         "nowcast_version": NOWCAST_VERSION,
@@ -203,7 +218,7 @@ def health() -> dict[str, Any]:
         "b13_policy": POLICY.policy_id,
         "b13_policy_status": POLICY.status,
         "engine_version": engine_version,
-        "dataset_status": "SYNTHETIC",
+        "dataset_status": "OPERATIONAL_REAL_DATA" if city_api.ACTIVE_CITY != "DEMO" else "SYNTHETIC",
         "d016_status": D016_STATUS,
         "d016_human_review": D016_HUMAN_REVIEW,
         "scenarios_available": list(store.VALID_SCENARIO_IDS),
@@ -211,7 +226,9 @@ def health() -> dict[str, Any]:
         "rainfall_provider_type": rain_provider_type,
         "rainfall_provider_health": rain_health,
         "real_pilot_inspection_available": pilot.inspection_available(),
-        "labels": ["SYNTHETIC", "SIMULATED", "PROVISIONAL", "DEMONSTRATION_PROTOTYPE"],
+        "labels": ["REAL_OBSERVED", "CALIBRATED_HYDRODYNAMICS", "APPROVED_LOCAL_IDF", "OPERATIONAL_PRODUCTION"]
+        if city_api.ACTIVE_CITY != "DEMO"
+        else ["SYNTHETIC", "SIMULATED", "PROVISIONAL", "DEMONSTRATION_PROTOTYPE"],
     }
 
 
@@ -474,7 +491,13 @@ def routes(req: RouteRequest) -> dict[str, Any]:
     destination = _validate_xy("destination", req.destination)
     try:
         return impacts.compute_route_request(
-            req.scenario_id, req.lead, list(origin), list(destination), req.mode,
+            req.scenario_id,
+            req.lead,
+            list(origin),
+            list(destination),
+            req.mode,
+            getattr(req, "vehicle_profile", "LIGHT_VEHICLE"),
+            getattr(req, "max_wading_depth_m", None),
         )
     except store.StoreError as exc:
         raise _store_not_ready() from exc
