@@ -163,6 +163,7 @@ def clear_caches():
     _depth_grid_cached.cache_clear()
     _impact_index_cached.cache_clear()
     _rainfall_grid_cached.cache_clear()
+    _load_city_road_routing_graph.cache_clear()
 
 
 @lru_cache(maxsize=1024)
@@ -489,6 +490,36 @@ def rainfall_grid(sid: str, lead: int) -> dict[str, Any]:
 import heapq
 import collections
 
+@lru_cache(maxsize=4)
+def _load_city_road_routing_graph(city_key: str):
+    """Loads and caches road routing topology and spatial index for instant lookups."""
+    road_file = PROCESSED_DIR / city_key / "road_graph.json"
+    if not road_file.exists():
+        return {}, [], {}, collections.defaultdict(list), {}
+        
+    rg = json.loads(road_file.read_text(encoding="utf-8"))
+    nodes = rg.get("nodes", {})
+    edges = rg.get("edges", [])
+    
+    adj = collections.defaultdict(list)
+    edge_by_id = {}
+    for e in edges:
+        edge_by_id[e["edge_id"]] = e
+        l_m = e.get("length_m", 100.0)
+        t_s = e.get("free_flow_time_s", 15.0)
+        adj[e["from_node"]].append((e["to_node"], e["edge_id"], l_m, t_s))
+        adj[e["to_node"]].append((e["from_node"], e["edge_id"], l_m, t_s))
+        
+    # Spatial grid for fast sub-millisecond nearest node queries (cell size = 500m)
+    spatial_grid = collections.defaultdict(list)
+    for nid, n in nodes.items():
+        gx = int(n["x"] // 500)
+        gy = int(n["y"] // 500)
+        spatial_grid[(gx, gy)].append((nid, n["x"], n["y"]))
+        
+    return nodes, edges, edge_by_id, adj, spatial_grid
+
+
 def compute_route_request(
     sid: str,
     lead: int,
@@ -502,30 +533,48 @@ def compute_route_request(
     active = getattr(city_api, "ACTIVE_CITY", "DEMO")
     if active != "DEMO":
         city_key = city_api.CITY_METADATA.get(active, {}).get("city_id", "mumbai")
-        road_file = PROCESSED_DIR / city_key / "road_graph.json"
-        if road_file.exists():
-            rg = json.loads(road_file.read_text(encoding="utf-8"))
-            nodes = rg.get("nodes", {})
-            edges = rg.get("edges", [])
-            
+        nodes, edges, edge_by_id, adj, spatial_grid = _load_city_road_routing_graph(city_key)
+        
+        if nodes:
             # Wading depth policy limits
             wading_limits = {
                 "LIGHT_VEHICLE": 0.10,
                 "CIVILIAN": 0.10,
                 "SUV": 0.30,
                 "RESCUE_4X4": 0.60,
+                "HEAVY_RESCUE": 0.55,
+                "AMBULANCE": 0.20,
+                "PEDESTRIAN": 0.05,
                 "EMERGENCY": 0.60
             }
             threshold = max_wading_depth_m if max_wading_depth_m is not None else wading_limits.get(vehicle_profile.upper(), 0.10)
             
-            # Find nearest nodes
+            # Fast spatial grid search for nearest node
             def find_nearest_node(pt: tuple[float, float]) -> str:
+                px, py = pt[0], pt[1]
+                cgx, cgy = int(px // 500), int(py // 500)
                 best_node, best_dist = None, 1e12
-                for nid, n in nodes.items():
-                    d = math.hypot(n["x"] - pt[0], n["y"] - pt[1])
-                    if d < best_dist:
-                        best_dist = d
-                        best_node = nid
+                
+                # Check surrounding 3x3 to 5x5 grid cells
+                for r in range(1, 4):
+                    for dx in range(-r, r + 1):
+                        for dy in range(-r, r + 1):
+                            cell_nodes = spatial_grid.get((cgx + dx, cgy + dy), [])
+                            for nid, nx, ny in cell_nodes:
+                                d = math.hypot(nx - px, ny - py)
+                                if d < best_dist:
+                                    best_dist = d
+                                    best_node = nid
+                    if best_node is not None:
+                        break
+                        
+                # Fallback to full search if outside bounds
+                if not best_node:
+                    for nid, n in nodes.items():
+                        d = math.hypot(n["x"] - px, n["y"] - py)
+                        if d < best_dist:
+                            best_dist = d
+                            best_node = nid
                 return best_node or ""
                 
             orig_node = find_nearest_node((origin[0], origin[1]))
@@ -564,14 +613,6 @@ def compute_route_request(
                         "status": "PASSABLE"
                     }
                 }
-                
-            # Build adjacency graph
-            adj = collections.defaultdict(list)
-            edge_by_id = {}
-            for e in edges:
-                edge_by_id[e["edge_id"]] = e
-                adj[e["from_node"]].append((e["to_node"], e["edge_id"], e.get("length_m", 100.0), e.get("free_flow_time_s", 15.0)))
-                adj[e["to_node"]].append((e["from_node"], e["edge_id"], e.get("length_m", 100.0), e.get("free_flow_time_s", 15.0)))
                 
             impacts_dict = impacts_at(sid, lead)
             

@@ -53,6 +53,24 @@ VEHICLE_PROFILES: dict[str, VehicleProfile] = {
         min_speed_factor=0.30,
         description="High-priority medical transport. Can traverse water up to 20 cm with moderate speed reduction.",
     ),
+    "SUV": VehicleProfile(
+        profile_id="SUV",
+        name="SUV / High Clearance",
+        icon="🚙",
+        max_depth_m=0.30,
+        base_speed_kmh=45.0,
+        min_speed_factor=0.25,
+        description="High ground clearance civilian SUVs and commercial vans. Safe up to 30 cm water depth.",
+    ),
+    "RESCUE_4X4": VehicleProfile(
+        profile_id="RESCUE_4X4",
+        name="Emergency / Rescue 4x4",
+        icon="🚒",
+        max_depth_m=0.60,
+        base_speed_kmh=35.0,
+        min_speed_factor=0.25,
+        description="Heavy 4x4 high-clearance emergency rescue vehicle. Capable of traversing severe floodwaters up to 60 cm.",
+    ),
     "HEAVY_RESCUE": VehicleProfile(
         profile_id="HEAVY_RESCUE",
         name="NDRF / Fire Rescue Truck",
@@ -60,7 +78,7 @@ VEHICLE_PROFILES: dict[str, VehicleProfile] = {
         max_depth_m=0.45,
         base_speed_kmh=30.0,
         min_speed_factor=0.25,
-        description="Heavy 4x4 high-clearance emergency rescue vehicle. Capable of traversing severe floodwaters up to 45 cm.",
+        description="Heavy high-clearance disaster rescue truck. Capable of traversing severe floodwaters up to 45 cm.",
     ),
     "LIGHT_VEHICLE": VehicleProfile(
         profile_id="LIGHT_VEHICLE",
@@ -82,12 +100,30 @@ VEHICLE_PROFILES: dict[str, VehicleProfile] = {
     ),
 }
 
+PROFILE_ALIASES: dict[str, str] = {
+    "CAR": "LIGHT_VEHICLE",
+    "AUTO": "LIGHT_VEHICLE",
+    "SEDAN": "LIGHT_VEHICLE",
+    "LIGHT": "LIGHT_VEHICLE",
+    "4X4": "RESCUE_4X4",
+    "RESCUE": "RESCUE_4X4",
+    "TRUCK": "HEAVY_RESCUE",
+    "HEAVY": "HEAVY_RESCUE",
+    "MEDIC": "AMBULANCE",
+    "FOOT": "PEDESTRIAN",
+    "WALK": "PEDESTRIAN",
+}
+
 
 def get_profile(profile_id: Optional[str] = None) -> VehicleProfile:
     """Lookup vehicle profile by ID (case-insensitive). Defaults to LIGHT_VEHICLE if omitted."""
-    if not profile_id or not profile_id.strip():
+    if not profile_id or not str(profile_id).strip():
         return VEHICLE_PROFILES["LIGHT_VEHICLE"]
-    clean_id = profile_id.strip().upper()
-    if clean_id not in VEHICLE_PROFILES:
-        raise ValueError(f"Unknown vehicle profile '{profile_id}'. Allowed: {list(VEHICLE_PROFILES.keys())}")
-    return VEHICLE_PROFILES[clean_id]
+    clean_id = str(profile_id).strip().upper()
+    
+    if clean_id in VEHICLE_PROFILES:
+        return VEHICLE_PROFILES[clean_id]
+    if clean_id in PROFILE_ALIASES:
+        return VEHICLE_PROFILES[PROFILE_ALIASES[clean_id]]
+        
+    return VEHICLE_PROFILES["LIGHT_VEHICLE"]
