@@ -457,8 +457,10 @@
       <h3>Basemap</h3>
       <select id="basemap-select" class="btn ghost" style="width:100%;margin-bottom:8px;font-size:11px">
         <option value="satellite" selected>🛰️ Esri HD Satellite</option>
-        <option value="dark">🌑 Dark GIS Basemap</option>
-        <option value="none">⬛ Minimalist Land</option>
+        <option value="dark">🌑 Dark GIS Base (No Watermark)</option>
+        <option value="osm">🗺️ OpenStreetMap Standard</option>
+        <option value="topo">⛰️ Topographic Contours</option>
+        <option value="none">⬛ Minimalist Vector Grid</option>
       </select>
       <h3>Layers</h3>
       <label class="layer"><input type="checkbox" data-layer="depth" checked> Flood depth</label>
@@ -805,8 +807,11 @@ function getTileUrl(x, y, z, type) {
   if (type === "satellite") {
     return `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${z}/${y}/${x}`;
   } else if (type === "dark") {
-    const s = ["a", "b", "c", "d"][Math.abs(x + y) % 4];
-    return `https://${s}.basemaps.cartocdn.com/rastertiles/dark_all/${z}/${x}/${y}.png`;
+    return `https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/${z}/${y}/${x}`;
+  } else if (type === "osm") {
+    return `https://tile.openstreetmap.org/${z}/${x}/${y}.png`;
+  } else if (type === "topo") {
+    return `https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/${z}/${y}/${x}`;
   }
   return null;
 }
@@ -874,7 +879,7 @@ function drawBasemap() {
 
 // ---------------------------------------------------------------- layer canvases
 function buildDepthCanvas(f){
-  const gs = getGridSize();
+  const gs = (f && f.grid) ? { w: f.grid.width, h: f.grid.height, cell: f.grid.cell_size_m } : getGridSize();
   const c = document.createElement("canvas"); c.width=gs.w; c.height=gs.h;
   const g = c.getContext("2d"); const img = g.createImageData(gs.w,gs.h);
   const d = f.depth;
@@ -882,14 +887,14 @@ function buildDepthCanvas(f){
   const total = Math.min(d.length, gs.w * gs.h);
   for (let i=0;i<total;i++){
     const col = depthColor(d[i]);
-    if (col){ img.data[i*4]=col[0]; img.data[i*4+1]=col[1]; img.data[i*4+2]=col[2]; img.data[i*4+3]=255; }
+    if (col){ img.data[i*4]=col[0]; img.data[i*4+1]=col[1]; img.data[i*4+2]=col[2]; img.data[i*4+3]=240; }
     else img.data[i*4+3]=0;
   }
   g.putImageData(img,0,0);
   return c;
 }
 function buildExtentCanvas(f){
-  const gs = getGridSize();
+  const gs = (f && f.grid) ? { w: f.grid.width, h: f.grid.height, cell: f.grid.cell_size_m } : getGridSize();
   const c = document.createElement("canvas"); c.width=gs.w; c.height=gs.h;
   const g = c.getContext("2d"); const img = g.createImageData(gs.w,gs.h);
   const e = f.extent;
@@ -903,7 +908,7 @@ function buildExtentCanvas(f){
   return c;
 }
 function buildRainCanvas(rain){
-  const gs = getGridSize();
+  const gs = (rain && rain.grid) ? { w: rain.grid.width, h: rain.grid.height, cell: rain.grid.cell_size_m } : getGridSize();
   const c = document.createElement("canvas"); c.width=gs.w; c.height=gs.h;
   const g = c.getContext("2d"); const img = g.createImageData(gs.w,gs.h);
   const v = rain ? rain.values : null;
@@ -937,9 +942,28 @@ function draw(){
   // Basemap satellite or dark layer with dynamic multi-resolution LOD
   drawBasemap();
 
-  // Base background if no satellite layer
+  // Base background for Minimalist Land mode
   if (state.basemap === "none") {
-    ctx.fillStyle = "#121a24"; ctx.fillRect(bx, by, bw, bh);
+    // Rich dark CAD/GIS vector base
+    ctx.fillStyle = "#0b121b"; ctx.fillRect(bx, by, bw, bh);
+    
+    // Draw subtle coordinate grid lines
+    ctx.strokeStyle = "rgba(56, 189, 248, 0.08)";
+    ctx.lineWidth = 1;
+    const gridStepM = Math.max(1000, Math.round((b[2] - b[0]) / 10 / 1000) * 1000);
+    const startGridX = Math.ceil(b[0] / gridStepM) * gridStepM;
+    const startGridY = Math.ceil(b[1] / gridStepM) * gridStepM;
+    
+    ctx.beginPath();
+    for (let gx = startGridX; gx <= b[2]; gx += gridStepM) {
+      const [sx] = w2s(gx, b[1]);
+      ctx.moveTo(sx, by); ctx.lineTo(sx, by + bh);
+    }
+    for (let gy = startGridY; gy <= b[3]; gy += gridStepM) {
+      const [, sy] = w2s(b[0], gy);
+      ctx.moveTo(bx, sy); ctx.lineTo(bx + bw, sy);
+    }
+    ctx.stroke();
   }
 
   // flood depth / extent / rainfall

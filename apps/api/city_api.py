@@ -139,6 +139,9 @@ def switch_active_city(req: CitySwitchRequest) -> dict[str, Any]:
         raise HTTPException(status_code=400, detail=f"Invalid city: {req.city}")
 
     ACTIVE_CITY = city_upper
+    from apps.api import impacts
+    impacts.clear_caches()
+
     return {
         "status": "SUCCESS",
         "active_city": ACTIVE_CITY,

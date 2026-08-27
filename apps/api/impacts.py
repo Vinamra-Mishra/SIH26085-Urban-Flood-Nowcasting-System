@@ -158,12 +158,17 @@ def _load_city_dem_and_mask(city_key: str) -> tuple[np.ndarray, np.ndarray, dict
     return dem, mask, grid_meta
 
 
-@lru_cache(maxsize=512)
-def depth_grid(sid: str, lead: int) -> np.ndarray:
+def clear_caches():
+    _load_city_dem_and_mask.cache_clear()
+    _depth_grid_cached.cache_clear()
+    _impact_index_cached.cache_clear()
+    _rainfall_grid_cached.cache_clear()
+
+
+@lru_cache(maxsize=1024)
+def _depth_grid_cached(sid: str, lead: int, city_key: str) -> np.ndarray:
     """Coupled mass-conservation depth grid (m) for one scenario snapshot."""
-    active = getattr(city_api, "ACTIVE_CITY", "DEMO")
-    if active != "DEMO":
-        city_key = city_api.CITY_METADATA.get(active, {}).get("city_id", "mumbai")
+    if city_key != "DEMO":
         dem, mask, _ = _load_city_dem_and_mask(city_key)
         
         # 1. Rainfall Forcing Q_rain (mm/h) from IMD/CWC Design Profiles
@@ -222,6 +227,12 @@ def depth_grid(sid: str, lead: int) -> np.ndarray:
     return read_depth_tif(str(path))
 
 
+def depth_grid(sid: str, lead: int) -> np.ndarray:
+    active = getattr(city_api, "ACTIVE_CITY", "DEMO")
+    city_key = city_api.CITY_METADATA.get(active, {}).get("city_id", "mumbai") if active != "DEMO" else "DEMO"
+    return _depth_grid_cached(sid, lead, city_key)
+
+
 def _valid_times(sid: str) -> dict[int, str]:
     result = store.scenario_result(sid)
     out: dict[int, str] = {}
@@ -230,11 +241,10 @@ def _valid_times(sid: str) -> dict[int, str]:
     return out
 
 
-@lru_cache(maxsize=16)
-def impact_index(sid: str) -> dict[int, dict[str, Any]]:
+@lru_cache(maxsize=32)
+def _impact_index_cached(sid: str, city_key: str) -> dict[int, dict[str, Any]]:
     """Full per-scenario road-impact index (lead -> {road_id -> RoadImpact})."""
-    active = getattr(city_api, "ACTIVE_CITY", "DEMO")
-    if active != "DEMO":
+    if city_key != "DEMO":
         rn = road_network()
         out: dict[int, dict[str, Any]] = {}
         for lead in LEADS:
@@ -279,6 +289,12 @@ def impact_index(sid: str) -> dict[int, dict[str, Any]]:
     return idx
 
 
+def impact_index(sid: str) -> dict[int, dict[str, Any]]:
+    active = getattr(city_api, "ACTIVE_CITY", "DEMO")
+    city_key = city_api.CITY_METADATA.get(active, {}).get("city_id", "mumbai") if active != "DEMO" else "DEMO"
+    return _impact_index_cached(sid, city_key)
+
+
 def impacts_at(sid: str, lead: int) -> dict[str, Any]:
     return impact_index(sid).get(lead, {})
 
@@ -293,40 +309,57 @@ def road_metrics(sid: str, lead: int) -> dict[str, Any]:
             c = v.get("classification", "DRY")
             impact_counts[c] = impact_counts.get(c, 0) + 1
         total_imp = sum(v for k, v in impact_counts.items() if k != "DRY")
-        total_impass = impact_counts["IMPASSABLE"]
         return {
+            "scenario_id": sid,
             "lead_minutes": lead,
             "impact_counts": impact_counts,
             "total_impacted": total_imp,
-            "total_impassable": total_impass,
-            "impacted_segments": total_imp,
-            "impassable_segments": total_impass,
+            "passable_fraction": round(1.0 - (impact_counts.get("IMPASSABLE", 0) / max(1, len(imp))), 3),
         }
-    idx = impact_index(sid)
-    m = metrics_at_lead(NETWORK, idx[lead])
-    m.update(time_aggregates(NETWORK, idx))
-    return m
+
+    return road_metrics_at(NETWORK, impact_index(sid), sid, lead)
 
 
-def road_impact_timeline(sid: str, road_id: str) -> dict[str, Any]:
-    idx = impact_index(sid)
-    seg = NETWORK.by_id().get(road_id)
-    if seg is None:
-        raise KeyError(road_id)
-    series = [idx[lead][road_id].to_dict() for lead in sorted(idx)]
-    # Derived "first impacted / impassable" lead, only if the data supports it.
-    first_impacted = next(
-        (s["lead_minutes"] for s in series if s["classification"] != "DRY"), None)
-    first_impassable = next(
-        (s["lead_minutes"] for s in series if s["classification"] == "IMPASSABLE"), None)
+def single_road_timeline(sid: str, road_id: str) -> dict[str, Any]:
+    active = getattr(city_api, "ACTIVE_CITY", "DEMO")
+    if active != "DEMO":
+        idx = impact_index(sid)
+        points = []
+        for lead in LEADS:
+            imp = idx.get(lead, {}).get(road_id, {})
+            points.append({
+                "lead_minutes": lead,
+                "classification": imp.get("classification", "DRY"),
+                "passability": imp.get("passability", "PASSABLE"),
+                "max_depth_m": imp.get("max_depth_m", 0.0),
+                "impacted_fraction": imp.get("impacted_fraction", 0.0),
+                "is_passable": imp.get("is_passable", True),
+                "effective_speed_kmh": imp.get("effective_speed_kmh", 50.0),
+            })
+        return {
+            "scenario_id": sid,
+            "road_id": road_id,
+            "points": points,
+            "first_impacted_lead_minutes": next((p["lead_minutes"] for p in points if p["classification"] != "DRY"), None),
+            "first_impassable_lead_minutes": next((p["lead_minutes"] for p in points if not p["is_passable"]), None),
+        }
+
+    seg = NETWORK.segment(road_id)
+    pts = [
+        impact_index(sid)[lead][road_id]
+        for lead in LEADS
+        if road_id in impact_index(sid)[lead]
+    ]
+    first_impacted = next((p.lead_minutes for p in pts if p.classification != RoadImpactClassification.DRY), None)
+    first_impassable = next((p.lead_minutes for p in pts if not p.is_passable), None)
     return {
-        "road_id": road_id,
         "scenario_id": sid,
-        "road_class": seg.road_class,
-        "length_m": round(seg.length_m, 3),
+        "road_id": road_id,
+        "road_name": seg.road_name,
+        "road_class": seg.road_class.value,
+        "length_m": seg.length_m,
         "baseline_speed_kmh": seg.baseline_speed_kmh,
-        "geometry": [[round(x, 3), round(y, 3)] for x, y in seg.geometry],
-        "series": series,
+        "points": [p.to_dict() for p in pts],
         "first_impacted_lead_minutes": first_impacted,
         "first_impassable_lead_minutes": first_impassable,
         "source": seg.source,
@@ -401,8 +434,8 @@ def rainfall_summary(sid: str, lead: int) -> dict[str, Any]:
 
 
 @lru_cache(maxsize=512)
-def rainfall_grid(sid: str, lead: int) -> dict[str, Any]:
-    """Deterministic rainfall forcing field (mm/h) for one scenario/lead."""
+def _rainfall_grid_cached(sid: str, lead: int, city_key: str) -> dict[str, Any]:
+    """Deterministic rainfall forcing field (mm/h) for one scenario/lead/city."""
     sc = M5_SCENARIOS.get(sid, M5_SCENARIOS["S4"])
     prof = sc.rainfall_profile
     interval_min = prof.temporal_resolution_minutes
@@ -411,9 +444,8 @@ def rainfall_grid(sid: str, lead: int) -> dict[str, Any]:
     
     gm = grid_metadata()
     w, h = gm.get("width", 134), gm.get("height", 134)
-    active = getattr(city_api, "ACTIVE_CITY", "DEMO")
     
-    if active != "DEMO":
+    if city_key != "DEMO":
         # 2D Gaussian convective rain cell moving with advection velocity
         y_coords, x_coords = np.mgrid[0:h, 0:w]
         cx = w * (0.35 + 0.3 * (lead / 180.0))
@@ -442,6 +474,12 @@ def rainfall_grid(sid: str, lead: int) -> dict[str, Any]:
         "status": status_label,
         "labels": labels,
     }
+
+
+def rainfall_grid(sid: str, lead: int) -> dict[str, Any]:
+    active = getattr(city_api, "ACTIVE_CITY", "DEMO")
+    city_key = city_api.CITY_METADATA.get(active, {}).get("city_id", "mumbai") if active != "DEMO" else "DEMO"
+    return _rainfall_grid_cached(sid, lead, city_key)
 
 
 # ---------------------------------------------------------------------------
