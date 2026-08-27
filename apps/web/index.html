@@ -619,7 +619,7 @@ const state = {
   origin:null, dest:null, route:null, selectedRoad:null, activeAlert:null,
 };
 
-let scenarios=[], roads=[], networkMeta=null, drainPts=null, policy=null;
+let scenarios=[], roads=[], networkMeta=null, drainPts=null, policy=null, activeCityMeta=null;
 let scenarioMeta={}, scenarioResult={}, frame=null;
 let projectionConfigs=[], projectionSummaryData=null, projectionStatusData=null;
 let criticalAssetsData = null;
@@ -816,14 +816,14 @@ function drawBasemap() {
   const w = canvas.clientWidth, h = canvas.clientHeight;
   const b = getBounds();
   
-  // 1. Calculate world viewport clamped strictly to active city extent + 1500m buffer
+  // 1. Calculate world viewport clamped strictly to active city forecast extent
   const [sMinX, sMaxY] = s2w(0, 0);
   const [sMaxX, sMinY] = s2w(w, h);
   
-  const screenMinX = Math.max(b[0] - 1500, Math.min(b[2] + 1500, Math.min(sMinX, sMaxX)));
-  const screenMaxX = Math.max(b[0] - 1500, Math.min(b[2] + 1500, Math.max(sMinX, sMaxX)));
-  const screenMinY = Math.max(b[1] - 1500, Math.min(b[3] + 1500, Math.min(sMinY, sMaxY)));
-  const screenMaxY = Math.max(b[1] - 1500, Math.min(b[3] + 1500, Math.max(sMinY, sMaxY)));
+  const screenMinX = Math.max(b[0], Math.min(b[2], Math.min(sMinX, sMaxX)));
+  const screenMaxX = Math.max(b[0], Math.min(b[2], Math.max(sMinX, sMaxX)));
+  const screenMinY = Math.max(b[1], Math.min(b[3], Math.min(sMinY, sMaxY)));
+  const screenMaxY = Math.max(b[1], Math.min(b[3], Math.max(sMinY, sMaxY)));
   
   if (screenMinX >= screenMaxX || screenMinY >= screenMaxY) return;
   
@@ -921,24 +921,32 @@ function buildRainCanvas(rain){
 function draw(){
   const w = canvas.clientWidth, h = canvas.clientHeight;
   ctx.clearRect(0,0,w,h);
-  ctx.fillStyle = "#0a0f16"; ctx.fillRect(0,0,w,h);
+  ctx.fillStyle = "#06090e"; ctx.fillRect(0,0,w,h);
+
+  // Background subtle grid
+  const b = getBounds();
+  const [x0,y0] = w2s(b[0],b[3]), [x1,y1] = w2s(b[2],b[1]);
+  const bx = Math.min(x0, x1), by = Math.min(y0, y1), bw = Math.abs(x1 - x0), bh = Math.abs(y1 - y0);
+
+  // 1. SAVE and CLIP entire rendering strictly to the active forecast region
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(bx, by, bw, bh);
+  ctx.clip();
 
   // Basemap satellite or dark layer with dynamic multi-resolution LOD
   drawBasemap();
 
-  // land border outline
-  const b = getBounds();
-  const [x0,y0] = w2s(b[0],b[3]), [x1,y1] = w2s(b[2],b[1]);
+  // Base background if no satellite layer
   if (state.basemap === "none") {
-    ctx.fillStyle = "#121a24"; ctx.fillRect(x0,y0,x1-x0,y1-y0);
+    ctx.fillStyle = "#121a24"; ctx.fillRect(bx, by, bw, bh);
   }
-  ctx.strokeStyle = "#1b2838"; ctx.lineWidth = 1; ctx.strokeRect(x0,y0,x1-x0,y1-y0);
 
   // flood depth / extent / rainfall
   if (frame) {
-    if (state.layers.depth && depthCanvas) ctx.drawImage(depthCanvas, x0, y0, x1-x0, y1-y0);
-    if (state.layers.extent && extentCanvas) ctx.drawImage(extentCanvas, x0, y0, x1-x0, y1-y0);
-    if (state.layers.rainfall && rainCanvas) ctx.drawImage(rainCanvas, x0, y0, x1-x0, y1-y0);
+    if (state.layers.depth && depthCanvas) ctx.drawImage(depthCanvas, bx, by, bw, bh);
+    if (state.layers.extent && extentCanvas) ctx.drawImage(extentCanvas, bx, by, bw, bh);
+    if (state.layers.rainfall && rainCanvas) ctx.drawImage(rainCanvas, bx, by, bw, bh);
   }
 
   // roads (real street network with high-contrast Google Maps style casing)
@@ -1100,6 +1108,43 @@ function draw(){
   // origin/destination
   if (state.origin) marker(w2s(state.origin[0],state.origin[1]), "#4cc38a", "O");
   if (state.dest) marker(w2s(state.dest[0],state.dest[1]), "#e06c5c", "D");
+
+  // RESTORE canvas clipping context
+  ctx.restore();
+
+  // 2. Draw crisp forecast domain boundary frame with corner accents
+  ctx.save();
+  ctx.strokeStyle = "rgba(56, 189, 248, 0.7)";
+  ctx.lineWidth = 1.5;
+  ctx.strokeRect(bx, by, bw, bh);
+
+  // Corner reticles
+  const rLen = Math.min(24, Math.min(bw, bh) * 0.08);
+  ctx.strokeStyle = "#38bdf8";
+  ctx.lineWidth = 2.5;
+  // Top-left
+  ctx.beginPath(); ctx.moveTo(bx, by + rLen); ctx.lineTo(bx, by); ctx.lineTo(bx + rLen, by); ctx.stroke();
+  // Top-right
+  ctx.beginPath(); ctx.moveTo(bx + bw - rLen, by); ctx.lineTo(bx + bw, by); ctx.lineTo(bx + bw, by + rLen); ctx.stroke();
+  // Bottom-left
+  ctx.beginPath(); ctx.moveTo(bx, by + bh - rLen); ctx.lineTo(bx, by + bh); ctx.lineTo(bx + rLen, by + bh); ctx.stroke();
+  // Bottom-right
+  ctx.beginPath(); ctx.moveTo(bx + bw - rLen, by + bh); ctx.lineTo(bx + bw, by + bh); ctx.lineTo(bx + bw, by + bh - rLen); ctx.stroke();
+
+  // Domain HUD Tag
+  ctx.fillStyle = "rgba(15, 23, 42, 0.88)";
+  ctx.strokeStyle = "rgba(56, 189, 248, 0.4)";
+  ctx.lineWidth = 1;
+  const cityName = activeCityMeta?.name || (state.activeCity === "VIJAYAWADA" ? "Vijayawada Urban Domain" : "Mumbai Metropolitan Region");
+  const crsName = activeCityMeta?.crs || (state.activeCity === "VIJAYAWADA" ? "EPSG:32644" : "EPSG:32643");
+  const tagText = `⚡ FORECAST REGION · ${cityName.toUpperCase()} (${crsName})`;
+  ctx.font = "bold 10px 'JetBrains Mono', monospace";
+  const tagW = ctx.measureText(tagText).width + 16;
+  ctx.fillRect(bx + 8, by + 8, tagW, 20);
+  ctx.strokeRect(bx + 8, by + 8, tagW, 20);
+  ctx.fillStyle = "#38bdf8";
+  ctx.fillText(tagText, bx + 16, by + 22);
+  ctx.restore();
 }
 
 function dot(p, color, rad){ ctx.fillStyle=color; ctx.beginPath(); ctx.arc(p[0],p[1],rad,0,Math.PI*2); ctx.fill(); ctx.strokeStyle="#0a0f16"; ctx.lineWidth=1.5; ctx.stroke(); }
@@ -2292,6 +2337,8 @@ if ($("city-selector")) {
   $("city-selector").onchange = async (e) => {
     const newCity = e.target.value;
     try {
+      state.activeCity = newCity;
+      tileCache.clear();
       await postJSON("/api/v1/city/switch", { city: newCity });
       const [sc, rd, pol, dp, projStatus, cityActive] = await Promise.all([
         getJSON("/api/v1/scenarios"),
@@ -2302,6 +2349,7 @@ if ($("city-selector")) {
         getJSON("/api/v1/city/active").catch(() => null),
       ]);
       if (cityActive && cityActive.metadata) {
+        activeCityMeta = cityActive.metadata;
         updateCityBadges(cityActive.metadata, cityActive.badges);
       }
       scenarios = sc.scenarios;
@@ -2363,6 +2411,8 @@ document.querySelectorAll(".tab-btn").forEach(btn => {
       getJSON("/api/v1/city/active").catch(() => null),
     ]);
     if (cityActive && cityActive.metadata) {
+      activeCityMeta = cityActive.metadata;
+      state.activeCity = cityActive.active_city;
       updateCityBadges(cityActive.metadata, cityActive.badges);
       if ($("city-selector")) $("city-selector").value = cityActive.active_city;
     }

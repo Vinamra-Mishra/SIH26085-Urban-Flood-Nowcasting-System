@@ -390,7 +390,11 @@ def process_roads(city: str, spec: dict, dem: np.ndarray, transform: rasterio.Af
         if geom_type != "LineString" or len(coords) < 2:
             continue
 
-        utm_pts = [transformer.transform(lon, lat) for lon, lat in coords]
+        raw_utm_pts = [transformer.transform(lon, lat) for lon, lat in coords]
+        utm_pts = [pt for pt in raw_utm_pts if bounds[0] <= pt[0] <= bounds[2] and bounds[1] <= pt[1] <= bounds[3]]
+        if len(utm_pts) < 2:
+            continue
+
         start_id = f"N_{round(utm_pts[0][0], 1)}_{round(utm_pts[0][1], 1)}"
         end_id = f"N_{round(utm_pts[-1][0], 1)}_{round(utm_pts[-1][1], 1)}"
 
