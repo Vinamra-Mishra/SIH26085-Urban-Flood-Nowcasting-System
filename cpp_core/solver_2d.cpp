@@ -364,7 +364,7 @@ int HydrodynamicSolver2D::solve_inundation_full(
 
             // Topographically concentrated water depth (smooth continuous progression)
             float h_init = net_runoff_m * (0.05f + 2.6f * std::pow(eta, 1.4f)) + surcharge_m;
-            state.h[i] = std::max(0.0f, h_init);
+            state.h[i] = std::min(2.5f, std::max(0.0f, h_init));
 
             // Compute local gradient slope for kinematic momentum initialization
             int r = i / width;
@@ -414,6 +414,7 @@ int HydrodynamicSolver2D::solve_inundation_full(
 
     double final_vol = 0.0;
     for (int i = 0; i < total; i++) {
+        state.h[i] = std::min(2.5f, std::max(0.0f, state.h[i]));
         final_vol += (double)state.h[i] * (cell_size_m * cell_size_m);
         out_depth[i] = state.h[i];
         if (out_velocity_u) out_velocity_u[i] = (state.h[i] > H_MIN) ? (state.hu[i] / state.h[i]) : 0.0f;
