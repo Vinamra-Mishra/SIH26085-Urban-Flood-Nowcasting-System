@@ -320,26 +320,74 @@ int HydrodynamicSolver2D::solve_inundation_full(
         state.land_mask[i] = land_mask ? land_mask[i] : 1;
     }
 
-    float base_rate = base_rain_rate_mmh > 0.0f ? base_rain_rate_mmh : (sid == "S4" ? 85.0f : (sid == "S3" ? 72.0f : 38.0f));
-    float time_fac = 0.0f;
-    if (lead_minutes <= 90) {
-        float arg = std::max(0.06f, ((float)lead_minutes / 90.0f) * ((float)M_PI / 2.0f));
-        time_fac = std::max(0.12f, std::sin(arg));
-    } else {
-        float arg = std::min((float)M_PI / 2.0f, (((float)lead_minutes - 90.0f) / 90.0f) * ((float)M_PI / 2.0f));
-        time_fac = std::max(0.18f, std::cos(arg));
-    }
-    float rain_mps = (base_rate * time_fac) / (1000.0f * 3600.0f);
-    float drain_cap_mps = (drain_cap_mmh > 0.0f ? drain_cap_mmh : (sid == "S4" ? 3.3f : 22.0f)) / (1000.0f * 3600.0f);
-
-    #pragma omp parallel for schedule(static, 2048)
+    float z_min = 1.0e6f;
+    float z_max = -1.0e6f;
     for (int i = 0; i < total; i++) {
         if (state.land_mask[i] == 1) {
-            state.rain[i] = rain_mps;
-            state.q_exchange[i] = -drain_cap_mps;
-            if (sid == "S4" && lead_minutes >= 25 && state.zb[i] < 6.0f) {
-                state.q_exchange[i] = +(drain_cap_mps * 8.0f);
-                state.k_sat[i] = 1.0e-7f;
+            if (state.zb[i] < z_min) z_min = state.zb[i];
+            if (state.zb[i] > z_max) z_max = state.zb[i];
+        }
+    }
+    if (z_min >= z_max) { z_min = 0.0f; z_max = 100.0f; }
+    float z_median = z_min + 0.35f * (z_max - z_min);
+    float z_range = std::max(1.0f, z_median - z_min);
+
+    float base_rate = base_rain_rate_mmh > 0.0f ? base_rain_rate_mmh : (sid == "S4" ? 85.0f : (sid == "S3" ? 72.0f : 38.0f));
+    float lead_hours = (float)lead_minutes / 60.0f;
+    float time_fac = 1.0f;
+    if (lead_minutes <= 90) {
+        float arg = std::max(0.10f, ((float)lead_minutes / 90.0f) * ((float)M_PI / 2.0f));
+        time_fac = std::max(0.20f, std::sin(arg));
+    } else {
+        float arg = std::min((float)M_PI / 2.0f, (((float)lead_minutes - 90.0f) / 90.0f) * ((float)M_PI / 2.0f));
+        time_fac = std::max(0.25f, std::cos(arg));
+    }
+
+    // Cumulative runoff calculation (soil infiltration saturation over time)
+    float gross_rain_m = (base_rate * lead_hours * time_fac) / 1000.0f;
+    float runoff_coeff = (lead_minutes == 0) ? 0.0f : std::min(0.92f, 0.28f + 0.64f * std::tanh(lead_hours * 1.5f));
+    float net_runoff_m = gross_rain_m * runoff_coeff;
+
+    // Distribute initial water depth according to local topographic depression index
+    #pragma omp parallel for schedule(static, 2048)
+    for (int i = 0; i < total; i++) {
+        if (state.land_mask[i] == 1 && lead_minutes > 0) {
+            float delta_z = std::max(0.0f, z_median - state.zb[i]);
+            float eta = delta_z / z_range; // 0 on hills, 1 in valleys / nalas
+
+            // Surcharge fountain backflow in low-lying nodes
+            float surcharge_m = 0.0f;
+            if ((sid == "S4" || sid == "S3") && eta > 0.45f) {
+                float surch_intensity = (sid == "S4" ? 0.45f : 0.25f);
+                surcharge_m = surch_intensity * std::tanh(lead_hours * 2.2f) * (eta - 0.45f) / 0.55f;
+            }
+
+            // Topographically concentrated water depth (smooth continuous progression)
+            float h_init = net_runoff_m * (0.05f + 2.6f * std::pow(eta, 1.4f)) + surcharge_m;
+            state.h[i] = std::max(0.0f, h_init);
+
+            // Compute local gradient slope for kinematic momentum initialization
+            int r = i / width;
+            int c = i % width;
+            float dz_dx = 0.0f;
+            float dz_dy = 0.0f;
+            if (c > 0 && c < width - 1) {
+                dz_dx = (state.zb[r * width + (c + 1)] - state.zb[r * width + (c - 1)]) / (2.0f * cell_size_m);
+            }
+            if (r > 0 && r < height - 1) {
+                dz_dy = (state.zb[(r + 1) * width + c] - state.zb[(r - 1) * width + c]) / (2.0f * cell_size_m);
+            }
+
+            if (state.h[i] > H_DRY) {
+                float s0_mag = std::sqrt(dz_dx * dz_dx + dz_dy * dz_dy);
+                float s0_safe = std::max(1.0e-4f, std::min(0.15f, s0_mag));
+                float vel = (1.0f / state.manning_n[i]) * std::pow(state.h[i], 2.0f / 3.0f) * std::sqrt(s0_safe);
+                vel = std::min(vel, 3.5f); // Limit physical velocity
+
+                if (s0_mag > 1.0e-5f) {
+                    state.hu[i] = -state.h[i] * vel * (dz_dx / s0_mag);
+                    state.hv[i] = -state.h[i] * vel * (dz_dy / s0_mag);
+                }
             }
         }
     }
@@ -351,8 +399,8 @@ int HydrodynamicSolver2D::solve_inundation_full(
     }
     ledger.initial_volume_m3 = initial_vol;
 
-    // Advance 6 coupling strides (30 seconds per lead slice)
-    float target_time = 30.0f;
+    // Advance 6 finite-volume SWE coupling relaxation strides
+    float target_time = 15.0f;
     float current_time = 0.0f;
 
     while (current_time < target_time) {
@@ -365,11 +413,7 @@ int HydrodynamicSolver2D::solve_inundation_full(
     }
 
     double final_vol = 0.0;
-    float lead_scale = std::min(1.0f, (float)lead_minutes / 60.0f);
-    float depth_multiplier = (lead_minutes == 0) ? 1.0f : (1.0f + lead_scale * 120.0f);
-
     for (int i = 0; i < total; i++) {
-        state.h[i] *= depth_multiplier;
         final_vol += (double)state.h[i] * (cell_size_m * cell_size_m);
         out_depth[i] = state.h[i];
         if (out_velocity_u) out_velocity_u[i] = (state.h[i] > H_MIN) ? (state.hu[i] / state.h[i]) : 0.0f;
@@ -377,10 +421,10 @@ int HydrodynamicSolver2D::solve_inundation_full(
     }
     ledger.final_volume_m3 = final_vol;
 
-    double expected_vol = (ledger.initial_volume_m3 + ledger.total_rainfall_m3 - ledger.total_infiltration_m3 +
-                          ledger.total_drainage_exchange_m3 - ledger.total_boundary_outflow_m3) * (double)depth_multiplier;
+    double expected_vol = ledger.initial_volume_m3 + ledger.total_rainfall_m3 - ledger.total_infiltration_m3 +
+                          ledger.total_drainage_exchange_m3 - ledger.total_boundary_outflow_m3;
     double residual = std::abs(final_vol - expected_vol);
-    double total_in = std::max(1.0, ledger.total_rainfall_m3 * (double)depth_multiplier);
+    double total_in = std::max(1.0, std::max(ledger.initial_volume_m3, ledger.total_rainfall_m3));
     ledger.mass_closure_error_pct = (residual / total_in) * 100.0;
 
     if (out_report) {

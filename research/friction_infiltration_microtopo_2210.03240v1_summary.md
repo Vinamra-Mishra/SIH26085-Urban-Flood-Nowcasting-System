@@ -1,0 +1,10 @@
+# Physics-informed neural networks of the Saint-Venant equations for downscaling a large-scale river model
+
+**Authors:** Dongyu Feng, Zeli Tan, QiZhi He
+**Published:** 2022-10-06T22:51:30Z
+**ArXiv ID:** [2210.03240v1](http://arxiv.org/abs/2210.03240v1)
+**Category:** Infiltration, Friction & Microtopography
+
+## Abstract
+
+Large-scale river models are being refined over coastal regions to improve the scientific understanding of coastal processes, hazards and responses to climate change. However, coarse mesh resolutions and approximations in physical representations of tidal rivers limit the performance of such models at resolving the complex flow dynamics especially near the river-ocean interface, resulting in inaccurate simulations of flood inundation. In this research, we propose a machine learning (ML) framework based on the state-of-the-art physics-informed neural network (PINN) to simulate the downscaled flow at the subgrid scale. First, we demonstrate that PINN is able to assimilate observations of various types and solve the one-dimensional (1-D) Saint-Venant equations (SVE) directly. We perform the flow simulations over a floodplain and along an open channel in several synthetic case studies. The PINN performance is evaluated against analytical solutions and numerical models. Our results indicate that the PINN solutions of water depth have satisfactory accuracy with limited observations assimilated. In the case of flood wave propagation induced by storm surge and tide, a new neural network architecture is proposed based on Fourier feature embeddings that seamlessly encodes the periodic tidal boundary condition in the PINN's formulation. Furthermore, we show that the PINN-based downscaling can produce more reasonable subgrid solutions of the along-channel water depth by assimilating observational data. The PINN solution outperforms the simple linear interpolation in resolving the topography and dynamic flow regimes at the subgrid scale. This study provides a promising path towards improving emulation capabilities in large-scale models to characterize fine-scale coastal processes.

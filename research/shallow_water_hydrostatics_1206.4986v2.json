@@ -1,0 +1,16 @@
+{
+  "arxiv_id": "1206.4986v2",
+  "title": "A limitation of the hydrostatic reconstruction technique for Shallow Water equations",
+  "authors": [
+    "Olivier Delestre",
+    "St\u00e9phane Cordier",
+    "Fr\u00e9d\u00e9ric Darboux",
+    "Francois James"
+  ],
+  "published": "2012-06-21T19:14:26Z",
+  "category": "2D SWE & Hydrostatic Reconstruction",
+  "domain": "shallow_water_hydrostatics",
+  "abstract": "Because of their capability to preserve steady-states, well-balanced schemes for Shallow Water equations are becoming popular. Among them, the hydrostatic reconstruction proposed in Audusse et al. (2004), coupled with a positive numerical flux, allows to verify important mathematical and physical properties like the positivity of the water height and, thus, to avoid unstabilities when dealing with dry zones. In this note, we prove that this method exhibits an abnormal behavior for some combinations of slope, mesh size and water height.",
+  "pdf_url": "http://arxiv.org/pdf/1206.4986v2.pdf",
+  "arxiv_url": "http://arxiv.org/abs/1206.4986v2"
+}

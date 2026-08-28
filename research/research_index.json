@@ -1,0 +1,147 @@
+[
+  {
+    "arxiv_id": "1706.03458v2",
+    "title": "Deep Learning for Precipitation Nowcasting: A Benchmark and A New Model",
+    "authors": [
+      "Xingjian Shi",
+      "Zhihan Gao",
+      "Leonard Lausen",
+      "Hao Wang",
+      "Dit-Yan Yeung",
+      "Wai-kin Wong",
+      "Wang-chun Woo"
+    ],
+    "published": "2017-06-12T04:02:03Z",
+    "category": "Precipitation Nowcasting & Optical Flow",
+    "domain": "nowcasting_optical_flow",
+    "abstract": "With the goal of making high-resolution forecasts of regional rainfall, precipitation nowcasting has become an important and fundamental technology underlying various public services ranging from rainstorm warnings to flight safety. Recently, the Convolutional LSTM (ConvLSTM) model has been shown to outperform traditional optical flow based methods for precipitation nowcasting, suggesting that deep learning models have a huge potential for solving the problem. However, the convolutional recurrence structure in ConvLSTM-based models is location-invariant while natural motion and transformation (e.g., rotation) are location-variant in general. Furthermore, since deep-learning-based precipitation nowcasting is a newly emerging area, clear evaluation protocols have not yet been established. To address these problems, we propose both a new model and a benchmark for precipitation nowcasting. Specifically, we go beyond ConvLSTM and propose the Trajectory GRU (TrajGRU) model that can actively learn the location-variant structure for recurrent connections. Besides, we provide a benchmark that includes a real-world large-scale dataset from the Hong Kong Observatory, a new training loss, and a comprehensive evaluation protocol to facilitate future research and gauge the state of the art.",
+    "pdf_url": "https://arxiv.org/pdf/1706.03458v2",
+    "arxiv_url": "http://arxiv.org/abs/1706.03458v2"
+  },
+  {
+    "arxiv_id": "2309.05828v1",
+    "title": "Exploring Geometric Deep Learning For Precipitation Nowcasting",
+    "authors": [
+      "Shan Zhao",
+      "Sudipan Saha",
+      "Zhitong Xiong",
+      "Niklas Boers",
+      "Xiao Xiang Zhu"
+    ],
+    "published": "2023-09-11T21:14:55Z",
+    "category": "Precipitation Nowcasting & Optical Flow",
+    "domain": "nowcasting_optical_flow",
+    "abstract": "Precipitation nowcasting (up to a few hours) remains a challenge due to the highly complex local interactions that need to be captured accurately. Convolutional Neural Networks rely on convolutional kernels convolving with grid data and the extracted features are trapped by limited receptive field, typically expressed in excessively smooth output compared to ground truth. Thus they lack the capacity to model complex spatial relationships among the grids. Geometric deep learning aims to generalize neural network models to non-Euclidean domains. Such models are more flexible in defining nodes and edges and can effectively capture dynamic spatial relationship among geographical grids. Motivated by this, we explore a geometric deep learning-based temporal Graph Convolutional Network (GCN) for precipitation nowcasting. The adjacency matrix that simulates the interactions among grid cells is learned automatically by minimizing the L1 loss between prediction and ground truth pixel value during the training procedure. Then, the spatial relationship is refined by GCN layers while the temporal information is extracted by 1D convolution with various kernel lengths. The neighboring information is fed as auxiliary input layers to improve the final result. We test the model on sequences of radar reflectivity maps over the Trento/Italy area. The results show that GCNs improves the effectiveness of modeling the local details of the cloud profile as well as the prediction accuracy by achieving decreased error measures.",
+    "pdf_url": "https://arxiv.org/pdf/2309.05828v1",
+    "arxiv_url": "http://arxiv.org/abs/2309.05828v1"
+  },
+  {
+    "arxiv_id": "1206.4986v2",
+    "title": "A limitation of the hydrostatic reconstruction technique for Shallow Water equations",
+    "authors": [
+      "Olivier Delestre",
+      "St\u00e9phane Cordier",
+      "Fr\u00e9d\u00e9ric Darboux",
+      "Francois James"
+    ],
+    "published": "2012-06-21T19:14:26Z",
+    "category": "2D SWE & Hydrostatic Reconstruction",
+    "domain": "shallow_water_hydrostatics",
+    "abstract": "Because of their capability to preserve steady-states, well-balanced schemes for Shallow Water equations are becoming popular. Among them, the hydrostatic reconstruction proposed in Audusse et al. (2004), coupled with a positive numerical flux, allows to verify important mathematical and physical properties like the positivity of the water height and, thus, to avoid unstabilities when dealing with dry zones. In this note, we prove that this method exhibits an abnormal behavior for some combinations of slope, mesh size and water height.",
+    "pdf_url": "https://arxiv.org/pdf/1206.4986v2",
+    "arxiv_url": "http://arxiv.org/abs/1206.4986v2"
+  },
+  {
+    "arxiv_id": "2105.08357v1",
+    "title": "A fully well-balanced scheme for shallow water equations with Coriolis force",
+    "authors": [
+      "Vivien Desveaux",
+      "Alice Masset"
+    ],
+    "published": "2021-05-18T08:32:18Z",
+    "category": "2D SWE & Hydrostatic Reconstruction",
+    "domain": "shallow_water_hydrostatics",
+    "abstract": "The present work is devoted to the derivation of a fully well-balanced and positivepreserving numerical scheme for the shallow water equations with Coriolis force. The first main issue consists in preserving all the steady states, including the geostrophic equilibrium. Our strategy relies on a Godunov-type scheme with suitable source term and steady state discretisations. The second challenge lies in improving the order of the scheme while preserving the fully well-balanced property. A modification of the classical methods is required since no conservative reconstruction can preserve all the steady states in the case of rotating shallow water equations. A steady state detector is used to overcome this matter. Some numerical experiments are presented to show the relevance and the accuracy of both first-order and second-order schemes.",
+    "pdf_url": "https://arxiv.org/pdf/2105.08357v1",
+    "arxiv_url": "http://arxiv.org/abs/2105.08357v1"
+  },
+  {
+    "arxiv_id": "2304.01780v2",
+    "title": "Urban Flood Drifters (UFDs): identification, classification and characterisation",
+    "authors": [
+      "Arnau Bay\u00f3n",
+      "Daniel Valero",
+      "M\u00e1rio J. Franca"
+    ],
+    "published": "2023-04-04T13:13:20Z",
+    "category": "1D/2D Urban SWMM Coupling & Surcharge",
+    "domain": "urban_1d_2d_swmm_coupling",
+    "abstract": "Extreme floods threaten lives, assets and ecosystems, with the largest impacts occurring in urbanised areas. However, flood mitigation schemes generally neglect the fact that urban floods carry a considerable amount of solid load. In this study, we define Urban Flood Drifters (UFDs) as loose objects present in the urban landscape that can become mobile under certain flow conditions, thereafter blocking drainage infrastructure and endangering both downstream and upstream communities. Based on 270 post-flood photographic records from 63 major inundations of the past quarter-century across 46 countries, we provide a comprehensive analysis of UFDs and their flood-hazard implications. We show that a variety of vehicles, furniture and a heterogeneous mixture of drifters are present in post-flooding scenarios. Plastic, construction debris and wood (natural or anthropogenic) dominate the statistics of transported drifters in urban floods (with frequencies of roughly 50-60% each), followed by cars (present in 31.5% of post-flood images). Other heavy vehicles are readily observed in post-flood imagery and furniture such as bins, garden sheds or water tanks also appear occasionally, therefore suggesting that they can play a relevant role in extreme floods.",
+    "pdf_url": "https://arxiv.org/pdf/2304.01780v2",
+    "arxiv_url": "http://arxiv.org/abs/2304.01780v2"
+  },
+  {
+    "arxiv_id": "2311.14602v1",
+    "title": "Urban Flood Drifters (UFDs): Onset of Movement",
+    "authors": [
+      "Daniel Valero",
+      "Arnau Bay\u00f3n",
+      "M\u00e1rio J. Franca"
+    ],
+    "published": "2023-11-24T16:47:03Z",
+    "category": "1D/2D Urban SWMM Coupling & Surcharge",
+    "domain": "urban_1d_2d_swmm_coupling",
+    "abstract": "Despite their catastrophic implications in flood events, the mobilization and transport of large, loose objects - termed Urban Flood Drifters (UFDs) - are often overlooked in flood management. This oversight stems from our limited understanding of how flowing water interacts with these heterogeneous objects. To bridge this knowledge gap, we introduce a mechanistic stability model that predicts the onset of UFD mobilization across a diverse array of loose objects, from plastics to heavy vehicles. Built on an inventory of key physical properties of UFDs, this model is also validated against existing mobilization studies. Our model generates stability curves that delineate flow conditions leading to their mobilization. We further enhance the reliability of our model by incorporating a Monte Carlo-based probabilistic framework that accounts for uncertainties and interdependencies among the input parameters. These probabilistic stability curves enable us to estimate the likelihood of mobilization for specific categories of UFDs under certain flow conditions. When integrated with flood maps or two-dimensional (2D) hydrodynamic models, our stability curves can guide urban planning efforts to predict and mitigate the impacts of UFDs during extreme flood events.",
+    "pdf_url": "https://arxiv.org/pdf/2311.14602v1",
+    "arxiv_url": "http://arxiv.org/abs/2311.14602v1"
+  },
+  {
+    "arxiv_id": "2210.03240v1",
+    "title": "Physics-informed neural networks of the Saint-Venant equations for downscaling a large-scale river model",
+    "authors": [
+      "Dongyu Feng",
+      "Zeli Tan",
+      "QiZhi He"
+    ],
+    "published": "2022-10-06T22:51:30Z",
+    "category": "Infiltration, Friction & Microtopography",
+    "domain": "friction_infiltration_microtopo",
+    "abstract": "Large-scale river models are being refined over coastal regions to improve the scientific understanding of coastal processes, hazards and responses to climate change. However, coarse mesh resolutions and approximations in physical representations of tidal rivers limit the performance of such models at resolving the complex flow dynamics especially near the river-ocean interface, resulting in inaccurate simulations of flood inundation. In this research, we propose a machine learning (ML) framework based on the state-of-the-art physics-informed neural network (PINN) to simulate the downscaled flow at the subgrid scale. First, we demonstrate that PINN is able to assimilate observations of various types and solve the one-dimensional (1-D) Saint-Venant equations (SVE) directly. We perform the flow simulations over a floodplain and along an open channel in several synthetic case studies. The PINN performance is evaluated against analytical solutions and numerical models. Our results indicate that the PINN solutions of water depth have satisfactory accuracy with limited observations assimilated. In the case of flood wave propagation induced by storm surge and tide, a new neural network architecture is proposed based on Fourier feature embeddings that seamlessly encodes the periodic tidal boundary condition in the PINN's formulation. Furthermore, we show that the PINN-based downscaling can produce more reasonable subgrid solutions of the along-channel water depth by assimilating observational data. The PINN solution outperforms the simple linear interpolation in resolving the topography and dynamic flow regimes at the subgrid scale. This study provides a promising path towards improving emulation capabilities in large-scale models to characterize fine-scale coastal processes.",
+    "pdf_url": "https://arxiv.org/pdf/2210.03240v1",
+    "arxiv_url": "http://arxiv.org/abs/2210.03240v1"
+  },
+  {
+    "arxiv_id": "2010.01386v1",
+    "title": "Flood Evacuation During Pandemic: A multi-objective Framework to Handle Compound Hazard",
+    "authors": [
+      "Shrabani S. Tripathy",
+      "Udit Bhatia",
+      "Mohit Mohanty",
+      "Subhankar Karmakar",
+      "Subimal Ghosh"
+    ],
+    "published": "2020-10-03T16:42:07Z",
+    "category": "Dynamic Evacuation & D x V Road Hazard",
+    "domain": "hazard_evacuation_routing",
+    "abstract": "The evacuation of the population from flood-affected regions is a non-structural measure to mitigate flood hazards. Shelters used for this purpose usually accommodate a large number of flood evacuees for a temporary period. Floods during pandemic result in a compound hazard. Evacuations under such situations are difficult to plan as social distancing is nearly impossible in the highly crowded shelters. This results in a multi-objective problem with conflicting objectives of maximizing the number of evacuees from flood-prone regions and minimizing the number of infections at the end of the shelter's stay. To the best of our knowledge, such a problem is yet to be explored in literature. Here we develop a simulation-optimization framework, where multiple objectives are handled with a max-min approach. The simulation model consists of an extended Susceptible Exposed Infectious Recovered Susceptible (SEIRS) model.We apply the proposed model to the flood-prone Jagatsinghpur district in the state of Odisha, India. We find that the proposed approach can provide an estimate of people required to be evacuated from individual flood-prone villages to reduce flood hazards during the pandemic. At the same time, this does not result in an uncontrolled number of new infections. The proposed approach can generalize to different regions and can provide a framework to stakeholders to manage conflicting objectives in disaster management planning and to handle compound hazards.",
+    "pdf_url": "https://arxiv.org/pdf/2010.01386v1",
+    "arxiv_url": "http://arxiv.org/abs/2010.01386v1"
+  },
+  {
+    "arxiv_id": "2503.20962v1",
+    "title": "Probabilistic Downscaling for Flood Hazard Models",
+    "authors": [
+      "Samantha Roth",
+      "Sanjib Sharma",
+      "Atieh Alipour",
+      "Klaus Keller",
+      "Murali Haran"
+    ],
+    "published": "2025-03-26T19:55:58Z",
+    "category": "Dynamic Evacuation & D x V Road Hazard",
+    "domain": "hazard_evacuation_routing",
+    "abstract": "Riverine flooding poses significant risks. Developing strategies to manage flood risks requires flood projections with decision-relevant scales and well-characterized uncertainties, often at high spatial resolutions. However, calibrating high-resolution flood models can be computationally prohibitive. To address this challenge, we propose a probabilistic downscaling approach that maps low-resolution model projections onto higher-resolution grids. The existing literature presents two distinct types of downscaling approaches: (1) probabilistic methods, which are versatile and applicable across various physics-based models, and (2) deterministic downscaling methods, specifically tailored for flood hazard models. Both types of downscaling approaches come with their own set of mutually exclusive advantages. Here we introduce a new approach, PDFlood, that combines the advantages of existing probabilistic and flood model-specific downscaling approaches, mainly (1) spatial flooding probabilities and (2) improved accuracy from approximating physical processes. Compared to the state of the art deterministic downscaling approach for flood hazard models, PDFlood allows users to consider previously neglected uncertainties while providing comparable accuracy, thereby better informing the design of risk management strategies. While we develop PDFlood for flood models, the general concepts translate to other applications such as wildfire models.",
+    "pdf_url": "https://arxiv.org/pdf/2503.20962v1",
+    "arxiv_url": "http://arxiv.org/abs/2503.20962v1"
+  }
+]

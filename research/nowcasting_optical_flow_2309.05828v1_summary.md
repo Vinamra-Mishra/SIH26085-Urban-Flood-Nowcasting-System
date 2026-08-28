@@ -1,0 +1,10 @@
+# Exploring Geometric Deep Learning For Precipitation Nowcasting
+
+**Authors:** Shan Zhao, Sudipan Saha, Zhitong Xiong, Niklas Boers, Xiao Xiang Zhu
+**Published:** 2023-09-11T21:14:55Z
+**ArXiv ID:** [2309.05828v1](http://arxiv.org/abs/2309.05828v1)
+**Category:** Precipitation Nowcasting & Optical Flow
+
+## Abstract
+
+Precipitation nowcasting (up to a few hours) remains a challenge due to the highly complex local interactions that need to be captured accurately. Convolutional Neural Networks rely on convolutional kernels convolving with grid data and the extracted features are trapped by limited receptive field, typically expressed in excessively smooth output compared to ground truth. Thus they lack the capacity to model complex spatial relationships among the grids. Geometric deep learning aims to generalize neural network models to non-Euclidean domains. Such models are more flexible in defining nodes and edges and can effectively capture dynamic spatial relationship among geographical grids. Motivated by this, we explore a geometric deep learning-based temporal Graph Convolutional Network (GCN) for precipitation nowcasting. The adjacency matrix that simulates the interactions among grid cells is learned automatically by minimizing the L1 loss between prediction and ground truth pixel value during the training procedure. Then, the spatial relationship is refined by GCN layers while the temporal information is extracted by 1D convolution with various kernel lengths. The neighboring information is fed as auxiliary input layers to improve the final result. We test the model on sequences of radar reflectivity maps over the Trento/Italy area. The results show that GCNs improves the effectiveness of modeling the local details of the cloud profile as well as the prediction accuracy by achieving decreased error measures.

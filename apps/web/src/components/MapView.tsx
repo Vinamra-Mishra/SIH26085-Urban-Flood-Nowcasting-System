@@ -170,34 +170,36 @@ export const MapView: React.FC<MapViewProps> = ({
 
     // 1. BASEMAP RENDERING
     if (layers.tiles) {
-      if (basemapStyle === 'vector') {
-        // --- 1A. VECTOR AMOLED BASEMAP (Native UTM Vector Geometry, Zero Distortion) ---
+      const isDemoCatchment = (cityMeta?.city_id === 'DEMO' || (gw === 134 && gh === 134));
+
+      if (isDemoCatchment || basemapStyle === 'vector') {
+        // --- 1A. VECTOR AMOLED BASEMAP & SYNTHETIC CATCHMENT TOPOGRAPHY ---
         const [landMinSX, landMinSY] = worldToScreen(ox, oy + gh * cs, gridMeta, transform, w, h);
         const [landMaxSX, landMaxSY] = worldToScreen(ox + gw * cs, oy, gridMeta, transform, w, h);
         const domainW = landMaxSX - landMinSX;
         const domainH = landMaxSY - landMinSY;
 
-        // Vector Ocean / Water Basin
-        ctx.fillStyle = '#030816';
+        // Vector Ocean / Outer Basin
+        ctx.fillStyle = '#020617';
         ctx.fillRect(0, 0, w, h);
 
-        // Vector Land Polygon (Urban Catchment Domain)
+        // Vector Land Catchment Domain
         ctx.save();
-        ctx.fillStyle = '#080d1a';
-        ctx.strokeStyle = '#0284c7';
-        ctx.lineWidth = 1.5;
-        ctx.shadowColor = 'rgba(2, 132, 199, 0.35)';
-        ctx.shadowBlur = 12;
+        ctx.fillStyle = isDemoCatchment ? '#0b1329' : '#080d1a';
+        ctx.strokeStyle = isDemoCatchment ? '#38bdf8' : '#0284c7';
+        ctx.lineWidth = isDemoCatchment ? 2.0 : 1.5;
+        ctx.shadowColor = 'rgba(56, 189, 248, 0.4)';
+        ctx.shadowBlur = 14;
         ctx.fillRect(landMinSX, landMinSY, domainW, domainH);
         ctx.strokeRect(landMinSX, landMinSY, domainW, domainH);
         ctx.restore();
 
-        // Vector Urban District Grid & Shoreline Guides
-        ctx.strokeStyle = 'rgba(30, 41, 59, 0.4)';
+        // Synthetic Topographic Contour Rings & Micro-Grid
+        ctx.strokeStyle = isDemoCatchment ? 'rgba(56, 189, 248, 0.18)' : 'rgba(30, 41, 59, 0.4)';
         ctx.lineWidth = 1;
-        const vStep = 80 * transform.zoom;
-        const vOffsetX = (transform.panX % vStep);
-        const vOffsetY = (transform.panY % vStep);
+        const vStep = (isDemoCatchment ? 30 * cs : 80) * transform.zoom;
+        const vOffsetX = (transform.panX % Math.max(10, vStep));
+        const vOffsetY = (transform.panY % Math.max(10, vStep));
         ctx.beginPath();
         for (let x = vOffsetX; x < w; x += vStep) {
           ctx.moveTo(x, 0); ctx.lineTo(x, h);
@@ -207,10 +209,16 @@ export const MapView: React.FC<MapViewProps> = ({
         }
         ctx.stroke();
 
-        // Vector Coastline / Shoreline Glow
-        ctx.strokeStyle = 'rgba(56, 189, 248, 0.6)';
+        // Vector Domain Coastline Glow
+        ctx.strokeStyle = 'rgba(56, 189, 248, 0.75)';
         ctx.lineWidth = 2.0;
         ctx.strokeRect(landMinSX - 1, landMinSY - 1, domainW + 2, domainH + 2);
+
+        if (isDemoCatchment) {
+          ctx.fillStyle = 'rgba(56, 189, 248, 0.75)';
+          ctx.font = 'bold 10px -apple-system, BlinkMacSystemFont, monospace';
+          ctx.fillText('SYNTHETIC HYDRODYNAMIC BASIN (134x134 @ 30m = 4.02km)', landMinSX + 8, landMinSY + 16);
+        }
 
       } else if (basemapStyle === 'cad') {
         // --- 1B. CAD GRID BASEMAP ---
@@ -373,16 +381,21 @@ export const MapView: React.FC<MapViewProps> = ({
           const d = depthGrid[idx];
           if (d >= minDepthThreshold) {
             const pIdx = idx * 4;
-            if (d < 0.15) {
-              imgData.data[pIdx] = 56; imgData.data[pIdx + 1] = 189; imgData.data[pIdx + 2] = 248; imgData.data[pIdx + 3] = 175;
-            } else if (d < 0.30) {
-              imgData.data[pIdx] = 14; imgData.data[pIdx + 1] = 165; imgData.data[pIdx + 2] = 233; imgData.data[pIdx + 3] = 200;
-            } else if (d < 0.60) {
-              imgData.data[pIdx] = 245; imgData.data[pIdx + 1] = 158; imgData.data[pIdx + 2] = 11; imgData.data[pIdx + 3] = 220;
+            if (d < 0.08) {
+              // Initial runoff wetting front (1-8cm)
+              imgData.data[pIdx] = 56; imgData.data[pIdx + 1] = 189; imgData.data[pIdx + 2] = 248; imgData.data[pIdx + 3] = 135;
+            } else if (d < 0.20) {
+              // Shallow street water (8-20cm - Low Impact)
+              imgData.data[pIdx] = 2; imgData.data[pIdx + 1] = 132; imgData.data[pIdx + 2] = 199; imgData.data[pIdx + 3] = 185;
+            } else if (d < 0.50) {
+              // Moderate inundation (20-50cm - Caution/High Impact)
+              imgData.data[pIdx] = 245; imgData.data[pIdx + 1] = 158; imgData.data[pIdx + 2] = 11; imgData.data[pIdx + 3] = 215;
             } else if (d < 1.0) {
-              imgData.data[pIdx] = 239; imgData.data[pIdx + 1] = 68; imgData.data[pIdx + 2] = 68; imgData.data[pIdx + 3] = 235;
+              // Severe / Impassable (50-100cm)
+              imgData.data[pIdx] = 239; imgData.data[pIdx + 1] = 68; imgData.data[pIdx + 2] = 68; imgData.data[pIdx + 3] = 240;
             } else {
-              imgData.data[pIdx] = 168; imgData.data[pIdx + 1] = 85; imgData.data[pIdx + 2] = 247; imgData.data[pIdx + 3] = 250;
+              // Extreme flood (>1.0m)
+              imgData.data[pIdx] = 168; imgData.data[pIdx + 1] = 85; imgData.data[pIdx + 2] = 247; imgData.data[pIdx + 3] = 255;
             }
           }
         }

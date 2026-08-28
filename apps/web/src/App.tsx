@@ -466,7 +466,7 @@ export const App: React.FC = () => {
             criticalAssets={criticalAssets}
             activeRoute={activeRoute}
             currentLead={currentLead}
-            minDepthThreshold={0.03}
+            minDepthThreshold={0.01}
             layers={layers}
             onLayersChange={setLayers}
             isLoading={isLoading}
