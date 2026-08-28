@@ -173,7 +173,8 @@ def _depth_grid_cached(sid: str, lead: int, city_key: str) -> np.ndarray:
     """Coupled mass-conservation depth grid (m) for one scenario snapshot via accelerated physics engine."""
     if city_key != "DEMO":
         dem, mask, _ = _load_city_dem_and_mask(city_key)
-        return solve_inundation_2d(dem, mask, sid, lead)
+        depth_arr, _ = solve_inundation_2d(dem, mask, sid, lead)
+        return depth_arr
 
     path = store.artifact_tif_path(sid, lead)
     return read_depth_tif(str(path))
