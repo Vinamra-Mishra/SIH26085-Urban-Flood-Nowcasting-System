@@ -87,7 +87,8 @@ CITY_METADATA = {
 
 
 class CitySwitchRequest(BaseModel):
-    city: Literal["MUMBAI", "VIJAYAWADA", "DEMO", "mumbai", "vijayawada", "demo"]
+    city: Optional[str] = None
+    city_id: Optional[str] = None
 
 
 @router.get("/city/list")
@@ -134,9 +135,10 @@ def get_active_city() -> dict[str, Any]:
 def switch_active_city(req: CitySwitchRequest) -> dict[str, Any]:
     """Switch active city for model serving and dashboard display."""
     global ACTIVE_CITY
-    city_upper = req.city.upper()
+    c_raw = req.city or req.city_id or "MUMBAI"
+    city_upper = c_raw.upper()
     if city_upper not in CITY_METADATA:
-        raise HTTPException(status_code=400, detail=f"Invalid city: {req.city}")
+        raise HTTPException(status_code=400, detail=f"Invalid city: {c_raw}")
 
     ACTIVE_CITY = city_upper
     from services.contracts import set_active_city

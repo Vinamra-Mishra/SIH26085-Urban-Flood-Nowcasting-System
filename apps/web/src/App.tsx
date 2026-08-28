@@ -34,7 +34,11 @@ export const App: React.FC = () => {
   const [scenarios, setScenarios] = useState<ScenarioMeta[]>([]);
   const [activeScenarioId, setActiveScenarioId] = useState<string>('S4');
   const [currentLead, setCurrentLead] = useState<number>(0);
-  const [currentTimeStep, setCurrentTimeStep] = useState<number>(1); // Default to smooth 1-min video step
+  const [currentTimeStep, setCurrentTimeStep] = useState<number>(1);
+
+  // Basemap & Asset Filter State
+  const [basemapStyle, setBasemapStyle] = useState<'vector' | 'dark' | 'voyager' | 'satellite' | 'cad'>('vector');
+  const [selectedAssetCategory, setSelectedAssetCategory] = useState<string>('ALL');
 
   // GIS Data Stores
   const [gridMeta, setGridMeta] = useState<GridMeta>({
@@ -58,7 +62,7 @@ export const App: React.FC = () => {
   const [bufferedLeads, setBufferedLeads] = useState<number[]>([]);
   const [isBuffering, setIsBuffering] = useState<boolean>(false);
 
-  // 14 Layer Toggles State (Distinct Rainfall and Doppler Radar)
+  // 14 Layer Toggles State
   const [layers, setLayers] = useState<LayerState>({
     flood_2d: true,
     flood_1d: true,
@@ -69,8 +73,8 @@ export const App: React.FC = () => {
     assets: true,
     tiles: true,
     elevation: false,
-    rainfall: true,      // Continuous Rainfall Intensity Heatmap (mm/h)
-    radar: true,         // Real-Time Doppler Weather Radar Mosaic
+    rainfall: true,
+    radar: true,
     vuln: false,
     sponge: false,
     risk: false,
@@ -80,7 +84,7 @@ export const App: React.FC = () => {
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [loadingMessage, setLoadingMessage] = useState<string>('Initializing High-Resolution Flood Engine...');
 
-  // 12 Real-Time Metrics Strip State
+  // Real-Time Metrics State
   const [metrics, setMetrics] = useState<MetricsSummary>({
     lead_minutes: 0,
     rainfall_rate_mmh: 0.0,
@@ -96,77 +100,118 @@ export const App: React.FC = () => {
     dataset_source: 'REAL_OBSERVED',
   });
 
-  // Helper to parse raw API frame payload into cacheable structure
+  // Helper to parse raw API frame payload
   const parseFramePayload = useCallback((data: any, scenarioId: string, lead: number): CachedFrame => {
-    let depthArr = new Float32Array(0);
-    if (Array.isArray(data.depth)) {
-      depthArr = new Float32Array(data.depth);
-    }
-
-    const impactMap: Record<string, RoadImpact> = {};
-    let impassableCnt = 0;
-    let passableCnt = 0;
-    let dryCnt = 0;
-
-    if (Array.isArray(data.road_impacts)) {
-      for (const imp of data.road_impacts) {
-        impactMap[imp.road_id] = imp;
-        if (imp.classification === 'IMPASSABLE') impassableCnt++;
-        else if (imp.classification === 'DRY') dryCnt++;
-        else passableCnt++;
+    let parsedDepth: Float32Array;
+    if (data.depth_grid) {
+      if (Array.isArray(data.depth_grid) && Array.isArray(data.depth_grid[0])) {
+        const rows = data.depth_grid.length;
+        const cols = data.depth_grid[0].length;
+        parsedDepth = new Float32Array(rows * cols);
+        for (let r = 0; r < rows; r++) {
+          for (let c = 0; c < cols; c++) {
+            parsedDepth[r * cols + c] = data.depth_grid[r][c];
+          }
+        }
+      } else if (data.depth_grid instanceof Float32Array) {
+        parsedDepth = data.depth_grid;
+      } else {
+        parsedDepth = new Float32Array(data.depth_grid);
       }
+    } else {
+      parsedDepth = new Float32Array(gridMeta.width * gridMeta.height);
     }
 
-    let peakD = 0.0;
-    for (let i = 0; i < depthArr.length; i++) {
-      if (depthArr[i] > peakD) peakD = depthArr[i];
+    const impacts: Record<string, RoadImpact> = {};
+    if (data.road_impacts && typeof data.road_impacts === 'object') {
+      Object.entries(data.road_impacts).forEach(([k, v]: [string, any]) => {
+        impacts[k] = {
+          road_id: k,
+          classification: v.classification || (v.status === 'IMPASSABLE' ? 'IMPASSABLE' : 'DRY'),
+          max_depth_m: v.max_depth_m ?? v.depth_m ?? 0.0,
+          passability: v.passability || (v.status === 'IMPASSABLE' ? 'IMPASSABLE' : 'PASSABLE'),
+          is_passable: v.is_passable ?? (v.status !== 'IMPASSABLE'),
+          effective_speed_kmh: v.effective_speed_kmh ?? v.velocity_ms ?? 0.0,
+        };
+      });
     }
 
-    const cellArea = (data.grid?.cell_size_m ?? 30.0) ** 2;
-    let floodedCells = 0;
-    for (let i = 0; i < depthArr.length; i++) {
-      if (depthArr[i] > 0.05) floodedCells++;
-    }
-    const floodedA = floodedCells * cellArea;
-
-    const rainRate = data.rainfall?.current_intensity_mmh
-      ?? data.rainfall?.rate_mmh
-      ?? (lead <= 60 ? (scenarioId === 'S4' ? 50.0 : scenarioId === 'S3' ? 50.0 : scenarioId === 'S2' ? 45.0 : 20.0) : 0.0);
-
-    const totalImpacted = data.road_impacts?.length ?? 0;
-    const computedDryCnt = dryCnt > 0 ? dryCnt : Math.max(0, totalImpacted - impassableCnt - passableCnt);
-
-    const frameMetrics: MetricsSummary = {
+    const m = data.metrics || {};
+    const parsedMetrics: MetricsSummary = {
       lead_minutes: lead,
-      rainfall_rate_mmh: rainRate,
-      peak_depth_m: peakD,
-      flooded_area_m2: floodedA,
-      dry_roads_count: computedDryCnt,
-      passable_roads_count: passableCnt,
-      impassable_roads_count: impassableCnt,
-      surcharged_nodes_count: impassableCnt > 0 ? Math.min(impassableCnt * 2, 28) : 0,
-      storage_volume_m3: floodedA * 0.28,
-      outfall_q_m3s: lead > 20 ? (lead < 90 ? 14.8 : 8.2) : 2.1,
-      active_model: '2D Hydrodynamics (SWMM+Coupled)',
-      dataset_source: activeCity === 'DEMO' ? 'SYNTHETIC_BENCHMARK' : 'REAL_OBSERVED',
+      rainfall_rate_mmh: m.rainfall_rate_mmh ?? (scenarioId === 'S4' ? Math.max(0, 85 - lead * 0.4) : (scenarioId === 'REALTIME' ? (telemetry?.precip_rate_mmh ?? 18.5) : 35.0)),
+      peak_depth_m: m.peak_depth_m ?? 0.0,
+      flooded_area_m2: m.flooded_area_m2 ?? 0,
+      dry_roads_count: m.dry_roads_count ?? 0,
+      passable_roads_count: m.passable_roads_count ?? 0,
+      impassable_roads_count: m.impassable_roads_count ?? 0,
+      surcharged_nodes_count: m.surcharged_nodes_count ?? 0,
+      storage_volume_m3: m.storage_volume_m3 ?? 0,
+      outfall_q_m3s: m.outfall_q_m3s ?? 0.0,
+      active_model: m.active_model || 'Hydrodynamic (2D)',
+      dataset_source: m.dataset_source || 'REAL_OBSERVED',
     };
 
     return {
-      depth: depthArr,
-      roadImpacts: impactMap,
-      metrics: frameMetrics,
+      depth: parsedDepth,
+      roadImpacts: impacts,
+      metrics: parsedMetrics,
       grid: data.grid,
     };
-  }, [activeCity]);
+  }, [gridMeta.width, gridMeta.height, telemetry?.precip_rate_mmh]);
 
-  // Preload Horizon (Background Frame Buffer)
-  const preloadHorizon = useCallback(async (horizonMinutes = 60, step = 5) => {
+  // Sub-frame linear interpolation
+  const getInterpolatedFrame = useCallback((scenarioId: string, exactLead: number): CachedFrame | null => {
+    const keyExact = `${scenarioId}_${exactLead}`;
+    if (frameCacheRef.current.has(keyExact)) {
+      return frameCacheRef.current.get(keyExact)!;
+    }
+
+    const lowerKeyframe = Math.floor(exactLead / 5) * 5;
+    const upperKeyframe = lowerKeyframe + 5;
+    const keyLower = `${scenarioId}_${lowerKeyframe}`;
+    const keyUpper = `${scenarioId}_${upperKeyframe}`;
+
+    const lowerFrame = frameCacheRef.current.get(keyLower);
+    const upperFrame = frameCacheRef.current.get(keyUpper);
+
+    if (lowerFrame && upperFrame) {
+      const alpha = (exactLead - lowerKeyframe) / 5.0;
+      const len = lowerFrame.depth.length;
+      const interpDepth = new Float32Array(len);
+      for (let i = 0; i < len; i++) {
+        interpDepth[i] = lowerFrame.depth[i] * (1 - alpha) + upperFrame.depth[i] * alpha;
+      }
+
+      const interpMetrics: MetricsSummary = {
+        ...lowerFrame.metrics,
+        lead_minutes: exactLead,
+        peak_depth_m: lowerFrame.metrics.peak_depth_m * (1 - alpha) + upperFrame.metrics.peak_depth_m * alpha,
+        flooded_area_m2: Math.round(lowerFrame.metrics.flooded_area_m2 * (1 - alpha) + upperFrame.metrics.flooded_area_m2 * alpha),
+        rainfall_rate_mmh: lowerFrame.metrics.rainfall_rate_mmh * (1 - alpha) + upperFrame.metrics.rainfall_rate_mmh * alpha,
+        outfall_q_m3s: lowerFrame.metrics.outfall_q_m3s * (1 - alpha) + upperFrame.metrics.outfall_q_m3s * alpha,
+        storage_volume_m3: lowerFrame.metrics.storage_volume_m3 * (1 - alpha) + upperFrame.metrics.storage_volume_m3 * alpha,
+      };
+
+      const blendedFrame: CachedFrame = {
+        depth: interpDepth,
+        roadImpacts: alpha < 0.5 ? lowerFrame.roadImpacts : upperFrame.roadImpacts,
+        metrics: interpMetrics,
+        grid: lowerFrame.grid,
+      };
+      return blendedFrame;
+    }
+
+    return lowerFrame || upperFrame || null;
+  }, []);
+
+  // Pre-load horizon frames in background
+  const preloadHorizon = useCallback(async (horizonMinutes = 60, stepMinutes = 5) => {
     setIsBuffering(true);
-    const keyStep = Math.max(5, step);
     const leadsToFetch: number[] = [];
-    for (let l = 0; l <= Math.min(180, horizonMinutes); l += keyStep) {
-      const cacheKey = `${activeCity}_${activeScenarioId}_${l}`;
-      if (!frameCacheRef.current.has(cacheKey)) {
+    for (let l = 0; l <= horizonMinutes; l += stepMinutes) {
+      const key = `${activeScenarioId}_${l}`;
+      if (!frameCacheRef.current.has(key)) {
         leadsToFetch.push(l);
       }
     }
@@ -176,226 +221,134 @@ export const App: React.FC = () => {
       return;
     }
 
-    try {
-      const batchSize = 4;
-      for (let i = 0; i < leadsToFetch.length; i += batchSize) {
-        const batch = leadsToFetch.slice(i, i + batchSize);
-        await Promise.all(
-          batch.map(async (lead) => {
-            const snappedLead = Math.round(lead / 15) * 15;
-            const clampedLead = Math.max(0, Math.min(snappedLead, 60));
-            const endpoint = activeScenarioId === 'REALTIME'
-              ? `/api/v1/projections/nowcast/P_NORMAL/frame?lead=${clampedLead}`
+    const batchSize = 4;
+    for (let i = 0; i < leadsToFetch.length; i += batchSize) {
+      const batch = leadsToFetch.slice(i, i + batchSize);
+      await Promise.all(
+        batch.map(async (lead) => {
+          try {
+            const url = activeScenarioId === 'REALTIME'
+              ? `/api/v1/nowcast/realtime/frame?lead=${lead}`
               : `/api/v1/scenarios/${activeScenarioId}/frame?lead=${lead}`;
-            try {
-              const res = await fetch(endpoint);
-              if (res.ok) {
-                const data = await res.json();
-                const parsed = parseFramePayload(data, activeScenarioId, lead);
-                const cacheKey = `${activeCity}_${activeScenarioId}_${lead}`;
-                frameCacheRef.current.set(cacheKey, parsed);
-              }
-            } catch (err) {
-              console.warn(`Failed to prefetch frame lead ${lead}:`, err);
+            const res = await fetch(url);
+            if (res.ok) {
+              const data = await res.json();
+              const cached = parseFramePayload(data, activeScenarioId, lead);
+              frameCacheRef.current.set(`${activeScenarioId}_${lead}`, cached);
             }
-          })
-        );
+          } catch (e) {
+            console.warn(`Error preloading frame ${lead}:`, e);
+          }
+        })
+      );
 
-        const prefix = `${activeCity}_${activeScenarioId}_`;
-        const cached = Array.from(frameCacheRef.current.keys())
-          .filter((k) => k.startsWith(prefix))
-          .map((k) => parseInt(k.replace(prefix, ''), 10))
-          .sort((a, b) => a - b);
-        setBufferedLeads(cached);
-      }
-    } catch (e) {
-      console.error('Error preloading horizon:', e);
-    } finally {
-      setIsBuffering(false);
+      const buffered = Array.from(frameCacheRef.current.keys())
+        .filter((k) => k.startsWith(`${activeScenarioId}_`))
+        .map((k) => parseInt(k.split('_')[1], 10))
+        .sort((a, b) => a - b);
+      setBufferedLeads(buffered);
     }
-  }, [activeCity, activeScenarioId, parseFramePayload]);
+    setIsBuffering(false);
+  }, [activeScenarioId, parseFramePayload]);
 
-  // Interpolate Frame for Smooth 1-Minute Video-Like Progression
-  const getInterpolatedFrame = useCallback((scenarioId: string, lead: number): CachedFrame | null => {
-    const exactKey = `${activeCity}_${scenarioId}_${lead}`;
-    const exact = frameCacheRef.current.get(exactKey);
-    if (exact) return exact;
-
-    // Find nearest lower and upper keyframes
-    const prefix = `${activeCity}_${scenarioId}_`;
-    const cachedLeads = Array.from(frameCacheRef.current.keys())
-      .filter((k) => k.startsWith(prefix))
-      .map((k) => parseInt(k.replace(prefix, ''), 10))
-      .sort((a, b) => a - b);
-
-    if (cachedLeads.length === 0) return null;
-
-    let lowerLead = cachedLeads[0];
-    let upperLead = cachedLeads[cachedLeads.length - 1];
-
-    for (const cl of cachedLeads) {
-      if (cl <= lead) lowerLead = cl;
-      if (cl >= lead && upperLead === cachedLeads[cachedLeads.length - 1]) {
-        upperLead = cl;
-        break;
-      }
-    }
-
-    if (lowerLead === upperLead) {
-      return frameCacheRef.current.get(`${prefix}${lowerLead}`) || null;
-    }
-
-    const frameA = frameCacheRef.current.get(`${prefix}${lowerLead}`);
-    const frameB = frameCacheRef.current.get(`${prefix}${upperLead}`);
-
-    if (!frameA || !frameB || frameA.depth.length !== frameB.depth.length) {
-      return frameA || frameB || null;
-    }
-
-    // Linear interpolation alpha factor
-    const alpha = (lead - lowerLead) / Math.max(1, upperLead - lowerLead);
-    const interpDepth = new Float32Array(frameA.depth.length);
-    for (let i = 0; i < frameA.depth.length; i++) {
-      interpDepth[i] = frameA.depth[i] * (1.0 - alpha) + frameB.depth[i] * alpha;
-    }
-
-    const interpMetrics: MetricsSummary = {
-      ...frameA.metrics,
-      lead_minutes: lead,
-      peak_depth_m: frameA.metrics.peak_depth_m * (1.0 - alpha) + frameB.metrics.peak_depth_m * alpha,
-      flooded_area_m2: frameA.metrics.flooded_area_m2 * (1.0 - alpha) + frameB.metrics.flooded_area_m2 * alpha,
-      rainfall_rate_mmh: frameA.metrics.rainfall_rate_mmh * (1.0 - alpha) + frameB.metrics.rainfall_rate_mmh * alpha,
-    };
-
-    return {
-      depth: interpDepth,
-      roadImpacts: alpha < 0.5 ? frameA.roadImpacts : frameB.roadImpacts,
-      metrics: interpMetrics,
-      grid: frameA.grid,
-    };
-  }, [activeCity]);
-
-  // Load Single Simulation Frame (Cache-First & Smooth Interpolation)
-  const loadFrame = useCallback(async (scenarioId: string, lead: number, forceShowLoader = false) => {
-    // 1. Try smooth interpolation from in-memory cache
-    const interp = getInterpolatedFrame(scenarioId, lead);
-    if (interp) {
-      setDepthGrid(interp.depth);
-      setRoadImpacts(interp.roadImpacts);
-      setMetrics(interp.metrics);
-      if (interp.grid && activeCity === 'DEMO') {
-        setGridMeta({
-          origin_x: interp.grid.origin_x || 300000,
-          origin_y: interp.grid.origin_y || 2500000,
-          width: interp.grid.width || 134,
-          height: interp.grid.height || 134,
-          cell_size_m: interp.grid.cell_size_m || 30.0,
-          crs: interp.grid.crs || 'EPSG:32645',
-        });
-      }
+  // Load single or interpolated frame
+  const loadFrame = useCallback(async (scenarioId: string, lead: number, showBlockingLoader = false) => {
+    const cached = getInterpolatedFrame(scenarioId, lead);
+    if (cached) {
+      setDepthGrid(cached.depth);
+      setRoadImpacts(cached.roadImpacts);
+      setMetrics(cached.metrics);
+      if (cached.grid) setGridMeta((prev) => ({ ...prev, ...cached.grid }));
       return;
     }
 
-    // 2. Fallback on-demand fetch
-    if (forceShowLoader) {
+    if (showBlockingLoader) {
       setIsLoading(true);
-      setLoadingMessage(scenarioId === 'REALTIME'
-        ? `Processing Real-Time DWR Radar Stream & Optical Flow (T+${lead}m)...`
-        : `Solving 2D Shallow Water Equations for ${scenarioId} (T+${lead}m)...`);
+      setLoadingMessage(`Solving Coupled Hydrodynamic Equations (T+${lead}m)...`);
     }
 
     try {
-      const snappedLead = Math.round(lead / 15) * 15;
-      const clampedLead = Math.max(0, Math.min(snappedLead, 60));
-      const endpoint = scenarioId === 'REALTIME'
-        ? `/api/v1/projections/nowcast/P_NORMAL/frame?lead=${clampedLead}`
+      const url = scenarioId === 'REALTIME'
+        ? `/api/v1/nowcast/realtime/frame?lead=${lead}`
         : `/api/v1/scenarios/${scenarioId}/frame?lead=${lead}`;
-      const res = await fetch(endpoint);
-      if (!res.ok) return;
-      const data = await res.json();
+      const res = await fetch(url);
+      if (res.ok) {
+        const data = await res.json();
+        const parsed = parseFramePayload(data, scenarioId, lead);
+        frameCacheRef.current.set(`${scenarioId}_${lead}`, parsed);
+        setDepthGrid(parsed.depth);
+        setRoadImpacts(parsed.roadImpacts);
+        setMetrics(parsed.metrics);
+        if (parsed.grid) setGridMeta((prev) => ({ ...prev, ...parsed.grid }));
 
-      const parsed = parseFramePayload(data, scenarioId, lead);
-      const cacheKey = `${activeCity}_${scenarioId}_${lead}`;
-      frameCacheRef.current.set(cacheKey, parsed);
-
-      setDepthGrid(parsed.depth);
-      setRoadImpacts(parsed.roadImpacts);
-      setMetrics(parsed.metrics);
-      if (parsed.grid && activeCity === 'DEMO') {
-        setGridMeta({
-          origin_x: parsed.grid.origin_x || 300000,
-          origin_y: parsed.grid.origin_y || 2500000,
-          width: parsed.grid.width || 134,
-          height: parsed.grid.height || 134,
-          cell_size_m: parsed.grid.cell_size_m || 30.0,
-          crs: parsed.grid.crs || 'EPSG:32645',
-        });
+        setBufferedLeads((prev) => Array.from(new Set([...prev, lead])).sort((a, b) => a - b));
       }
-
-      const prefix = `${activeCity}_${scenarioId}_`;
-      const cachedList = Array.from(frameCacheRef.current.keys())
-        .filter((k) => k.startsWith(prefix))
-        .map((k) => parseInt(k.replace(prefix, ''), 10))
-        .sort((a, b) => a - b);
-      setBufferedLeads(cachedList);
     } catch (e) {
-      console.error('Failed to load simulation frame:', e);
+      console.error('Error fetching frame:', e);
     } finally {
-      setIsLoading(false);
+      if (showBlockingLoader) setIsLoading(false);
     }
-  }, [activeCity, parseFramePayload, getInterpolatedFrame]);
+  }, [getInterpolatedFrame, parseFramePayload]);
 
-  // Fetch initial city data & scenarios
+  // Load City Data
   const loadCityData = useCallback(async (city: CityId) => {
     setIsLoading(true);
-    setLoadingMessage(`Ingesting ${city === 'MUMBAI' ? 'Mumbai MMR' : city === 'VIJAYAWADA' ? 'Vijayawada Basin' : 'Synthetic Benchmark'} DEM & Drainage Network...`);
+    setLoadingMessage(`Loading High-Precision GIS Topography & Infrastructure for ${city}...`);
     try {
-      // 1. Switch backend active city
       await fetch('/api/v1/city/switch', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ city }),
+        body: JSON.stringify({ city_id: city }),
       });
 
-      // 2. Fetch City Metadata, Scenarios, Roads, Drainage, Critical Assets
-      const [scRes, rdRes, drainRes, assetsRes, cityRes, telemRes] = await Promise.all([
-        fetch('/api/v1/scenarios').then((r) => (r.ok ? r.json() : null)).catch(() => null),
-        fetch('/api/v1/roads').then((r) => (r.ok ? r.json() : null)).catch(() => null),
-        fetch('/api/v1/drainage/points').then((r) => (r.ok ? r.json() : null)).catch(() => null),
-        fetch(`/api/v1/vulnerability/assets?city=${city}`).then((r) => (r.ok ? r.json() : null)).catch(() => null),
-        fetch('/api/v1/city/active').then((r) => (r.ok ? r.json() : null)).catch(() => null),
-        fetch('/api/v1/telemetry/live').then((r) => (r.ok ? r.json() : null)).catch(() => null),
+      const [metaRes, scenRes, roadsRes, drainRes, assetsRes, telemRes] = await Promise.all([
+        fetch('/api/v1/city/active'),
+        fetch('/api/v1/scenarios'),
+        fetch('/api/v1/roads'),
+        fetch('/api/v1/drainage/points'),
+        fetch(`/api/v1/vulnerability/assets?city=${city}`),
+        fetch('/api/v1/telemetry/live'),
       ]);
 
-      if (cityRes && cityRes.metadata) {
-        setCityMeta(cityRes.metadata);
-      }
-      if (telemRes && !telemRes.detail) {
-        setTelemetry(telemRes);
-      }
-
-      if (scRes && scRes.scenarios) {
-        setScenarios(scRes.scenarios);
-      }
-
-      // Handle Road Network & Grid Geometry
-      if (rdRes) {
-        const segs: RoadSegment[] = rdRes.segments || rdRes.roads || [];
-        setRoads(segs);
-        if (rdRes.grid) {
+      if (metaRes.ok) {
+        const m = await metaRes.json();
+        setCityMeta(m);
+        if (m.grid_dimensions) {
           setGridMeta({
-            origin_x: rdRes.grid.origin_x || (city === 'MUMBAI' ? 262955.5669 : city === 'VIJAYAWADA' ? 451947.8172 : 300000),
-            origin_y: rdRes.grid.origin_y || (city === 'MUMBAI' ? 2088778.4453 : city === 'VIJAYAWADA' ? 1818732.6834 : 2500000),
-            width: rdRes.grid.width || (city === 'MUMBAI' ? 825 : city === 'VIJAYAWADA' ? 606 : 134),
-            height: rdRes.grid.height || (city === 'MUMBAI' ? 1486 : city === 'VIJAYAWADA' ? 481 : 134),
-            cell_size_m: rdRes.grid.cell_size_m || 30.0,
-            crs: rdRes.grid.crs || (city === 'MUMBAI' ? 'EPSG:32643' : city === 'VIJAYAWADA' ? 'EPSG:32644' : 'EPSG:32645'),
+            origin_x: m.origin_utm[0],
+            origin_y: m.origin_utm[1],
+            width: m.grid_dimensions[0],
+            height: m.grid_dimensions[1],
+            cell_size_m: m.cell_size_m,
+            crs: m.crs,
           });
         }
       }
 
-      if (drainRes) setDrainage(drainRes);
-      if (assetsRes && assetsRes.assets) setCriticalAssets(assetsRes.assets);
+      if (scenRes.ok) {
+        const sc = await scenRes.json();
+        setScenarios(sc.scenarios || []);
+      }
+
+      if (roadsRes.ok) {
+        const r = await roadsRes.json();
+        setRoads(r.features || r.roads || []);
+      }
+
+      if (drainRes.ok) {
+        const d = await drainRes.json();
+        setDrainage(d);
+      }
+
+      if (assetsRes.ok) {
+        const a = await assetsRes.json();
+        setCriticalAssets(a.assets || []);
+      }
+
+      if (telemRes.ok) {
+        const t = await telemRes.json();
+        setTelemetry(t);
+      }
     } catch (e) {
       console.error('Error loading city data:', e);
     } finally {
@@ -431,20 +384,20 @@ export const App: React.FC = () => {
     loadCityData(activeCity);
   }, [activeCity, loadCityData]);
 
-  // When scenario changes, reload frame and trigger background pre-buffering
+  // When scenario changes
   useEffect(() => {
     loadFrame(activeScenarioId, currentLead, false);
     preloadHorizon(60, 5);
   }, [activeScenarioId, preloadHorizon]);
 
-  // When lead changes, smoothly load/interpolate frame
+  // When lead changes
   useEffect(() => {
     loadFrame(activeScenarioId, currentLead, false);
   }, [currentLead, activeScenarioId, loadFrame]);
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', width: '100vw', height: '100vh', background: '#000000', color: '#f8fafc', overflow: 'hidden' }}>
-      {/* Top Navigation */}
+    <div style={{ display: 'flex', flexDirection: 'column', width: '100vw', height: '100vh', background: '#000000', overflow: 'hidden' }}>
+      {/* 1. Sleek Top Navigation Bar */}
       <Navbar
         activeCity={activeCity}
         onCityChange={(city) => {
@@ -457,8 +410,9 @@ export const App: React.FC = () => {
         telemetry={telemetry}
       />
 
-      {/* Main Center Area: Left Sidebar Tabs + Center Map View */}
-      <div style={{ display: 'flex', flex: 1, height: 'calc(100vh - 48px - 62px - 44px)', overflow: 'hidden' }}>
+      {/* 2. Main Middle Viewport (Sidebar + Map) */}
+      <div style={{ display: 'flex', flex: 1, height: 'calc(100vh - 48px - 58px - 44px)', overflow: 'hidden', position: 'relative' }}>
+        {/* Left Sidebar Tabs (Simulation, Routing, Assets, Mitigation, Calibration & CAP) */}
         <SidebarTabs
           scenarios={scenarios}
           activeScenarioId={activeScenarioId}
@@ -473,7 +427,8 @@ export const App: React.FC = () => {
           criticalAssets={criticalAssets}
         />
 
-        <main style={{ flex: 1, position: 'relative', height: '100%', overflow: 'hidden' }}>
+        {/* Center / Right Dynamic Canvas Map View */}
+        <div style={{ flex: 1, position: 'relative', height: '100%', overflow: 'hidden' }}>
           <MapView
             cityMeta={cityMeta}
             gridMeta={gridMeta}
@@ -490,11 +445,14 @@ export const App: React.FC = () => {
             isLoading={isLoading}
             loadingMessage={loadingMessage}
             telemetry={telemetry}
+            basemapStyle={basemapStyle}
+            onBasemapChange={setBasemapStyle}
+            selectedAssetCategory={selectedAssetCategory}
           />
-        </main>
+        </div>
       </div>
 
-      {/* Bottom Timeline Controller with Buffer Visualizer, Jump Controls, and Custom Steps */}
+      {/* 3. Bottom Smooth 1-Minute Video-Like Timeline Controller */}
       <TimelineController
         currentLead={currentLead}
         onLeadChange={setCurrentLead}
@@ -506,7 +464,7 @@ export const App: React.FC = () => {
         onPreloadHorizon={preloadHorizon}
       />
 
-      {/* Bottom 12-Card Real-Time Metrics Strip */}
+      {/* 4. Bottom Real-Time Telemetry Metrics Strip */}
       <MetricsBar metrics={metrics} />
     </div>
   );

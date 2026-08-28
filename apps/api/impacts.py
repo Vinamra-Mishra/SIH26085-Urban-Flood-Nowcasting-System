@@ -37,6 +37,7 @@ from services.routing.policy import POLICY
 from services.routing.roads import NETWORK, cell_to_projected
 from services.routing.router import compute_route
 from services.scenarios.registry import M5_SCENARIOS
+from services.physics_bridge import solve_inundation_2d
 
 PROCESSED_DIR = Path(__file__).resolve().parents[2] / "data" / "processed"
 LEADS = tuple(range(0, 181, 5))
@@ -169,62 +170,10 @@ def clear_caches():
 
 @lru_cache(maxsize=1024)
 def _depth_grid_cached(sid: str, lead: int, city_key: str) -> np.ndarray:
-    """Coupled mass-conservation depth grid (m) for one scenario snapshot."""
+    """Coupled mass-conservation depth grid (m) for one scenario snapshot via accelerated physics engine."""
     if city_key != "DEMO":
         dem, mask, _ = _load_city_dem_and_mask(city_key)
-        
-        # 1. Rainfall Forcing Q_rain (mm/h) from IMD/CWC Design Profiles
-        rain_rates = {"S1": 15.0, "S2": 38.0, "S3": 72.0, "S4": 85.0}
-        base_rate = rain_rates.get(sid, 38.0)
-        
-        # Hyetograph temporal evolution (peaking around lead 60-90 min)
-        if lead <= 90:
-            time_fac = max(0.12, math.sin(max(0.06, (lead / 90.0) * (math.pi / 2.0))))
-        else:
-            time_fac = max(0.18, math.cos(min(math.pi / 2.0, ((lead - 90.0) / 90.0) * (math.pi / 2.0))))
-            
-        q_rain = base_rate * time_fac  # mm/h
-        
-        # 2. SWMM Drainage Network Capacity Q_drain (mm/h)
-        # Normal municipal drainage conveys ~22 mm/h. In S4 (blocked), efficiency drops to 15% (3.3 mm/h)
-        q_drain_cap = 22.0 if sid != "S4" else 3.3
-        
-        # 3. Net Surface Ponding Volume Rate dV/dt (m/h)
-        q_net_mmh = max(5.0, q_rain - q_drain_cap) if sid in ("S3", "S4") else max(0.0, q_rain - q_drain_cap)
-        lead_prog = (min(lead, 90) / 90.0) if lead <= 90 else (1.0 - 0.35 * ((lead - 90.0) / 90.0))
-        cum_volume_m = (q_net_mmh / 1000.0) * 14.0 * max(0.08, lead_prog) + (0.05 if sid in ("S3", "S4") else 0.0)
-        
-        # 4. Topographic Inundation Routing over 30m CartoDEM + Microtopography
-        valid_dem = np.where(np.isnan(dem) | (dem < -50), 2.0, dem)
-        
-        # Percentile elevation baseline across land
-        land_elevs = valid_dem[mask == 1] if np.any(mask == 1) else valid_dem
-        z_min = float(np.percentile(land_elevs, 8))
-        z_med = float(np.percentile(land_elevs, 45))
-        
-        # Relative topographic depression index (0 = deepest depression/nala, >1 = ridge/hill)
-        rel_elev = np.clip((valid_dem - z_min) / max(2.0, (z_med - z_min)), 0.0, 4.0)
-        
-        # Physical depression accumulation: water accumulates exponentially in low terrain
-        depth = cum_volume_m * np.exp(-rel_elev * 1.8)
-        
-        # Microtopography hotspot accumulation (underpasses, nala corridors)
-        if sid in ("S2", "S3", "S4") and lead >= 10:
-            hotspot_factor = 0.45 if sid == "S4" else (0.28 if sid == "S3" else 0.12)
-            depth += hotspot_factor * np.exp(-rel_elev * 2.2) * time_fac
-            
-        # S4 Drainage surcharging out of low-elevation manholes
-        if sid == "S4" and lead >= 25:
-            depth[rel_elev < 0.6] += 0.30 * time_fac
-            
-        # Cut off noise below 3cm threshold
-        depth = np.where(depth >= 0.03, depth, 0.0)
-        
-        # 5. Apply Authoritative Vector Land-Sea Mask
-        # Strictly zeroes out true open sea / ocean while preserving all low-lying coastal land < 0.5m
-        depth = depth * mask
-        
-        return np.round(depth.astype(np.float64), 4)
+        return solve_inundation_2d(dem, mask, sid, lead)
 
     path = store.artifact_tif_path(sid, lead)
     return read_depth_tif(str(path))

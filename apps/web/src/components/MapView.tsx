@@ -57,6 +57,9 @@ interface MapViewProps {
   isLoading?: boolean;
   loadingMessage?: string;
   telemetry?: LiveTelemetry | null;
+  basemapStyle?: 'vector' | 'dark' | 'voyager' | 'satellite' | 'cad';
+  onBasemapChange?: (style: 'vector' | 'dark' | 'voyager' | 'satellite' | 'cad') => void;
+  selectedAssetCategory?: string;
 }
 
 const IMPACT_COLORS: Record<string, string> = {
@@ -85,6 +88,9 @@ export const MapView: React.FC<MapViewProps> = ({
   isLoading = false,
   loadingMessage,
   telemetry,
+  basemapStyle: basemapStyleProp,
+  onBasemapChange,
+  selectedAssetCategory: selectedAssetCategoryProp,
 }) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const tileCacheRef = useRef<Map<string, HTMLImageElement>>(new Map());
@@ -100,10 +106,14 @@ export const MapView: React.FC<MapViewProps> = ({
 
   // UI Panels & Asset Filter State
   const [isLayersCollapsed, setIsLayersCollapsed] = useState(false);
-  const [selectedAssetCategory, setSelectedAssetCategory] = useState<string>('ALL');
+  const [internalAssetCategory, setInternalAssetCategory] = useState<string>('ALL');
+  const selectedAssetCategory = selectedAssetCategoryProp || internalAssetCategory;
+  const setSelectedAssetCategory = setInternalAssetCategory;
 
   // Basemap style: 'vector' (Vector AMOLED - Native UTM), 'dark' (CartoDB Dark), 'voyager' (CartoDB Voyager), 'satellite' (Esri), 'cad' (Grid)
-  const [basemapStyle, setBasemapStyle] = useState<'vector' | 'dark' | 'voyager' | 'satellite' | 'cad'>('vector');
+  const [internalBasemapStyle, setInternalBasemapStyle] = useState<'vector' | 'dark' | 'voyager' | 'satellite' | 'cad'>('vector');
+  const basemapStyle = basemapStyleProp || internalBasemapStyle;
+  const setBasemapStyle = onBasemapChange || setInternalBasemapStyle;
 
   // Auto-fit / center when city or grid bounds change
   useEffect(() => {
@@ -1221,28 +1231,24 @@ export const MapView: React.FC<MapViewProps> = ({
       {/* Floating Inundation Depth Color Legend */}
       {layers.flood_2d && (
         <div
+          className="glass-panel animate-fade-in"
           style={{
             position: 'absolute',
-            bottom: '20px',
-            right: '14px',
-            background: 'rgba(0, 0, 0, 0.92)',
-            backdropFilter: 'blur(16px)',
-            border: '1px solid #1f2937',
-            borderRadius: '8px',
-            padding: '10px 12px',
+            bottom: '84px',
+            left: '14px',
+            padding: '8px 12px',
             fontSize: '10px',
             color: '#94a3b8',
-            zIndex: 35,
-            boxShadow: '0 12px 36px rgba(0, 0, 0, 0.9)',
-            minWidth: '220px',
+            zIndex: 30,
+            minWidth: '210px',
           }}
         >
-          <div style={{ fontWeight: 800, color: '#f8fafc', marginBottom: '6px', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '5px' }}>
-            <Waves size={13} color="#38bdf8" />
-            <span>Overland Inundation Depth Scale</span>
+          <div style={{ fontWeight: 800, color: '#f8fafc', marginBottom: '4px', fontSize: '10px', display: 'flex', alignItems: 'center', gap: '5px' }}>
+            <Waves size={12} color="#38bdf8" />
+            <span>Inundation Depth Scale</span>
           </div>
-          <div style={{ height: '8px', width: '100%', borderRadius: '4px', background: 'linear-gradient(to right, rgba(56,189,248,0.7), rgba(14,165,233,0.9), #f59e0b, #ef4444, #a855f7)', marginBottom: '5px' }} />
-          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '9px', color: '#cbd5e1' }}>
+          <div style={{ height: '6px', width: '100%', borderRadius: '3px', background: 'linear-gradient(to right, rgba(56,189,248,0.7), rgba(14,165,233,0.9), #f59e0b, #ef4444, #a855f7)', marginBottom: '3px' }} />
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '8px', color: '#cbd5e1' }}>
             <span>0.05m</span>
             <span>0.15m</span>
             <span>0.30m</span>
@@ -1255,28 +1261,24 @@ export const MapView: React.FC<MapViewProps> = ({
       {/* Floating Rainfall Intensity Heatmap Legend */}
       {layers.rainfall && (
         <div
+          className="glass-panel animate-fade-in"
           style={{
             position: 'absolute',
-            bottom: layers.flood_2d ? '86px' : '20px',
-            right: '14px',
-            background: 'rgba(0, 0, 0, 0.92)',
-            backdropFilter: 'blur(16px)',
-            border: '1px solid #1f2937',
-            borderRadius: '8px',
-            padding: '10px 12px',
+            bottom: layers.flood_2d ? '146px' : '84px',
+            left: '14px',
+            padding: '8px 12px',
             fontSize: '10px',
             color: '#94a3b8',
-            zIndex: 35,
-            boxShadow: '0 12px 36px rgba(0, 0, 0, 0.9)',
-            minWidth: '220px',
+            zIndex: 30,
+            minWidth: '210px',
           }}
         >
-          <div style={{ fontWeight: 800, color: '#f8fafc', marginBottom: '6px', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '5px' }}>
-            <CloudRain size={13} color="#38bdf8" />
-            <span>Rainfall Intensity Scale (mm/h)</span>
+          <div style={{ fontWeight: 800, color: '#f8fafc', marginBottom: '4px', fontSize: '10px', display: 'flex', alignItems: 'center', gap: '5px' }}>
+            <CloudRain size={12} color="#38bdf8" />
+            <span>Rainfall Intensity Scale</span>
           </div>
-          <div style={{ height: '8px', width: '100%', borderRadius: '4px', background: 'linear-gradient(to right, rgba(52,211,153,0.6), #fbbf24, #ef4444, #a855f7)', marginBottom: '5px' }} />
-          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '9px', color: '#cbd5e1' }}>
+          <div style={{ height: '6px', width: '100%', borderRadius: '3px', background: 'linear-gradient(to right, rgba(52,211,153,0.6), #fbbf24, #ef4444, #a855f7)', marginBottom: '3px' }} />
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '8px', color: '#cbd5e1' }}>
             <span>5 mm/h</span>
             <span>20 mm/h</span>
             <span>45 mm/h</span>

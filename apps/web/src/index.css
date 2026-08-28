@@ -1,15 +1,19 @@
 :root {
   --bg: #000000;
-  --panel: #050505;
-  --panel2: #0a0a0a;
+  --glass-bg: rgba(8, 12, 22, 0.82);
+  --glass-bg-hover: rgba(15, 23, 42, 0.92);
+  --glass-border: rgba(255, 255, 255, 0.12);
+  --glass-border-active: rgba(56, 189, 248, 0.5);
+  --glass-shadow: 0 20px 50px rgba(0, 0, 0, 0.85), 0 0 25px rgba(56, 189, 248, 0.08);
   --ink: #f8fafc;
-  --muted: #64748b;
-  --line: #171717;
+  --muted: #94a3b8;
+  --dimmed: #64748b;
   --blue: #38bdf8;
-  --blue-bg: #0c4a6e;
+  --blue-glow: rgba(56, 189, 248, 0.35);
   --green: #34d399;
   --amber: #fbbf24;
-  --red: #f87171;
+  --red: #ef4444;
+  --purple: #c084fc;
 }
 
 * {
@@ -19,64 +23,164 @@
 }
 
 html, body, #root {
-  width: 100%;
-  height: 100%;
+  width: 100vw;
+  height: 100vh;
   overflow: hidden;
   background: #000000;
   color: var(--ink);
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   font-size: 13px;
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  user-select: none;
 }
 
+/* Apple Maps / iOS Glassmorphic Containers */
+.glass-panel {
+  background: var(--glass-bg);
+  backdrop-filter: blur(24px) saturate(190%);
+  -webkit-backdrop-filter: blur(24px) saturate(190%);
+  border: 1px solid var(--glass-border);
+  border-radius: 18px;
+  box-shadow: var(--glass-shadow);
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.glass-pill {
+  background: rgba(10, 15, 29, 0.85);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  border: 1px solid var(--glass-border);
+  border-radius: 9999px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6);
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.glass-pill:hover {
+  border-color: rgba(255, 255, 255, 0.25);
+  background: rgba(15, 23, 42, 0.95);
+}
+
+.glass-card {
+  background: rgba(15, 23, 42, 0.65);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  transition: all 0.2s ease;
+}
+
+.glass-card:hover {
+  background: rgba(15, 23, 42, 0.85);
+  border-color: rgba(56, 189, 248, 0.3);
+}
+
+/* Interactive Button Micro-Interactions */
+.glass-btn {
+  background: rgba(15, 23, 42, 0.7);
+  border: 1px solid var(--glass-border);
+  border-radius: 10px;
+  color: var(--ink);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.glass-btn:hover {
+  background: rgba(30, 41, 59, 0.9);
+  border-color: rgba(56, 189, 248, 0.4);
+  transform: translateY(-1px);
+}
+
+.glass-btn:active {
+  transform: scale(0.96);
+}
+
+/* Quick Scenario & Chip Buttons */
+.chip-btn {
+  background: rgba(15, 23, 42, 0.75);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 9999px;
+  padding: 4px 10px;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--muted);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.chip-btn:hover {
+  background: rgba(30, 41, 59, 0.9);
+  color: #fff;
+  border-color: rgba(56, 189, 248, 0.4);
+}
+
+.chip-btn.active {
+  background: linear-gradient(135deg, #0284c7, #2563eb);
+  color: #fff;
+  border-color: #38bdf8;
+  box-shadow: 0 0 15px rgba(2, 132, 199, 0.45);
+}
+
+/* Custom Smooth Slider */
 input[type=range] {
   accent-color: var(--blue);
+  height: 4px;
+  border-radius: 2px;
 }
 
-/* Custom Scrollbar for sidebars */
+/* Custom Scrollbars */
 ::-webkit-scrollbar {
   width: 5px;
   height: 5px;
 }
 
 ::-webkit-scrollbar-track {
-  background: #000000;
+  background: transparent;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #1f2937;
-  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 9999px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #374151;
+  background: rgba(255, 255, 255, 0.3);
+}
+
+/* Animations */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes slideInLeft {
+  from { opacity: 0; transform: translateX(-16px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-slide-left {
+  animation: slideInLeft 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
 /* Pulsing Red Circle Radar Loader */
 @keyframes pulse-red-ring {
-  0% {
-    transform: scale(0.6);
-    opacity: 0.9;
-  }
-  50% {
-    transform: scale(1.4);
-    opacity: 0.35;
-  }
-  100% {
-    transform: scale(2.2);
-    opacity: 0;
-  }
+  0% { transform: scale(0.6); opacity: 0.9; }
+  50% { transform: scale(1.4); opacity: 0.35; }
+  100% { transform: scale(2.2); opacity: 0; }
 }
 
 @keyframes pulse-red-core {
-  0%, 100% {
-    transform: scale(0.85);
-    box-shadow: 0 0 14px rgba(239, 68, 68, 0.8), 0 0 28px rgba(239, 68, 68, 0.4);
-  }
-  50% {
-    transform: scale(1.18);
-    box-shadow: 0 0 22px rgba(239, 68, 68, 1), 0 0 40px rgba(239, 68, 68, 0.7);
-  }
+  0%, 100% { transform: scale(0.85); box-shadow: 0 0 14px rgba(239, 68, 68, 0.8), 0 0 28px rgba(239, 68, 68, 0.4); }
+  50% { transform: scale(1.18); box-shadow: 0 0 22px rgba(239, 68, 68, 1), 0 0 40px rgba(239, 68, 68, 0.7); }
 }
 
 .pulsing-red-circle {
@@ -117,4 +221,3 @@ input[type=range] {
   animation-delay: 0.6s;
   z-index: 1;
 }
-
