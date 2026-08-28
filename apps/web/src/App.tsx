@@ -102,28 +102,43 @@ export const App: React.FC = () => {
 
   // Helper to parse raw API frame payload
   const parseFramePayload = useCallback((data: any, scenarioId: string, lead: number): CachedFrame => {
+    const rawDepth = data.depth || data.depth_grid || data.grid_depth;
     let parsedDepth: Float32Array;
-    if (data.depth_grid) {
-      if (Array.isArray(data.depth_grid) && Array.isArray(data.depth_grid[0])) {
-        const rows = data.depth_grid.length;
-        const cols = data.depth_grid[0].length;
+    if (rawDepth) {
+      if (Array.isArray(rawDepth) && Array.isArray(rawDepth[0])) {
+        const rows = rawDepth.length;
+        const cols = rawDepth[0].length;
         parsedDepth = new Float32Array(rows * cols);
         for (let r = 0; r < rows; r++) {
           for (let c = 0; c < cols; c++) {
-            parsedDepth[r * cols + c] = data.depth_grid[r][c];
+            parsedDepth[r * cols + c] = rawDepth[r][c];
           }
         }
-      } else if (data.depth_grid instanceof Float32Array) {
-        parsedDepth = data.depth_grid;
+      } else if (rawDepth instanceof Float32Array) {
+        parsedDepth = rawDepth;
       } else {
-        parsedDepth = new Float32Array(data.depth_grid);
+        parsedDepth = new Float32Array(rawDepth);
       }
     } else {
       parsedDepth = new Float32Array(gridMeta.width * gridMeta.height);
     }
 
     const impacts: Record<string, RoadImpact> = {};
-    if (data.road_impacts && typeof data.road_impacts === 'object') {
+    if (Array.isArray(data.road_impacts)) {
+      data.road_impacts.forEach((v: any) => {
+        const rId = v.road_id || v.id;
+        if (rId) {
+          impacts[rId] = {
+            road_id: rId,
+            classification: v.classification || (v.status === 'IMPASSABLE' ? 'IMPASSABLE' : (v.max_depth_m > 0.15 ? 'CAUTION' : 'DRY')),
+            max_depth_m: v.max_depth_m ?? v.peak_depth_m ?? v.depth_m ?? 0.0,
+            passability: v.passability || (v.status === 'IMPASSABLE' ? 'IMPASSABLE' : 'PASSABLE'),
+            is_passable: v.is_passable ?? (v.status !== 'IMPASSABLE'),
+            effective_speed_kmh: v.effective_speed_kmh ?? v.velocity_ms ?? 30.0,
+          };
+        }
+      });
+    } else if (data.road_impacts && typeof data.road_impacts === 'object') {
       Object.entries(data.road_impacts).forEach(([k, v]: [string, any]) => {
         impacts[k] = {
           road_id: k,
@@ -136,15 +151,15 @@ export const App: React.FC = () => {
       });
     }
 
-    const m = data.metrics || {};
+    const m = data.metrics || data.road_metrics || {};
     const parsedMetrics: MetricsSummary = {
       lead_minutes: lead,
       rainfall_rate_mmh: m.rainfall_rate_mmh ?? (scenarioId === 'S4' ? Math.max(0, 85 - lead * 0.4) : (scenarioId === 'REALTIME' ? (telemetry?.precip_rate_mmh ?? 18.5) : 35.0)),
       peak_depth_m: m.peak_depth_m ?? 0.0,
       flooded_area_m2: m.flooded_area_m2 ?? 0,
-      dry_roads_count: m.dry_roads_count ?? 0,
-      passable_roads_count: m.passable_roads_count ?? 0,
-      impassable_roads_count: m.impassable_roads_count ?? 0,
+      dry_roads_count: m.dry_roads_count ?? m.dry ?? 0,
+      passable_roads_count: m.passable_roads_count ?? m.passable ?? 0,
+      impassable_roads_count: m.impassable_roads_count ?? m.impassable ?? 0,
       surcharged_nodes_count: m.surcharged_nodes_count ?? 0,
       storage_volume_m3: m.storage_volume_m3 ?? 0,
       outfall_q_m3s: m.outfall_q_m3s ?? 0.0,
@@ -152,11 +167,23 @@ export const App: React.FC = () => {
       dataset_source: m.dataset_source || 'REAL_OBSERVED',
     };
 
+    let gridObj: any = undefined;
+    if (data.grid) {
+      gridObj = {
+        width: data.grid.width || data.grid.cols || (data.grid.shape ? data.grid.shape[1] : undefined),
+        height: data.grid.height || data.grid.rows || (data.grid.shape ? data.grid.shape[0] : undefined),
+        origin_x: data.grid.origin_x ?? (data.grid.origin ? data.grid.origin[0] : undefined),
+        origin_y: data.grid.origin_y ?? (data.grid.origin ? data.grid.origin[1] : undefined),
+        cell_size_m: data.grid.cell_size_m,
+        crs: data.grid.crs,
+      };
+    }
+
     return {
       depth: parsedDepth,
       roadImpacts: impacts,
       metrics: parsedMetrics,
-      grid: data.grid,
+      grid: gridObj,
     };
   }, [gridMeta.width, gridMeta.height, telemetry?.precip_rate_mmh]);
 

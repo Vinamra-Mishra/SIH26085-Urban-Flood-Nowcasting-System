@@ -791,7 +791,22 @@ export const MapView: React.FC<MapViewProps> = ({
 
   useEffect(() => {
     let animId = requestAnimationFrame(draw);
-    return () => cancelAnimationFrame(animId);
+    const canvas = canvasRef.current;
+    let ro: ResizeObserver | null = null;
+    if (canvas && canvas.parentElement && typeof ResizeObserver !== 'undefined') {
+      ro = new ResizeObserver(() => {
+        requestAnimationFrame(draw);
+      });
+      ro.observe(canvas.parentElement);
+    }
+    const handleResize = () => requestAnimationFrame(draw);
+    window.addEventListener('resize', handleResize);
+
+    return () => {
+      cancelAnimationFrame(animId);
+      if (ro) ro.disconnect();
+      window.removeEventListener('resize', handleResize);
+    };
   }, [draw]);
 
   // Pan & Zoom Event Handlers
