@@ -103,6 +103,7 @@ export const MapView: React.FC<MapViewProps> = ({
   });
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0, startPanX: 0, startPanY: 0 });
+  const [hoveredSurchargeNode, setHoveredSurchargeNode] = useState<{ index: number; x: number; y: number } | null>(null);
 
   // UI Panels & Asset Filter State
   const [isLayersCollapsed, setIsLayersCollapsed] = useState(false);
@@ -404,23 +405,52 @@ export const MapView: React.FC<MapViewProps> = ({
 
         const isSurcharged = (i % 3 === 0);
         if (isSurcharged) {
+          const isHovered = hoveredSurchargeNode && hoveredSurchargeNode.index === i;
+
           ctx.save();
-          ctx.fillStyle = 'rgba(244, 63, 94, 0.25)';
-          ctx.strokeStyle = '#f43f5e';
-          ctx.lineWidth = 1.5;
+          ctx.fillStyle = isHovered ? 'rgba(244, 63, 94, 0.45)' : 'rgba(244, 63, 94, 0.25)';
+          ctx.strokeStyle = isHovered ? '#fb7185' : '#f43f5e';
+          ctx.lineWidth = isHovered ? 2.5 : 1.5;
           ctx.beginPath();
-          ctx.arc(px, py, 14 * transform.zoom, 0, Math.PI * 2);
+          ctx.arc(px, py, (isHovered ? 16 : 12) * transform.zoom, 0, Math.PI * 2);
           ctx.fill();
           ctx.stroke();
 
-          ctx.fillStyle = '#f43f5e';
+          ctx.fillStyle = isHovered ? '#fb7185' : '#f43f5e';
           ctx.beginPath();
-          ctx.arc(px, py, 4.5, 0, Math.PI * 2);
+          ctx.arc(px, py, isHovered ? 6.0 : 4.0, 0, Math.PI * 2);
           ctx.fill();
 
-          ctx.fillStyle = '#f8fafc';
-          ctx.font = 'bold 9px -apple-system, sans-serif';
-          ctx.fillText(`SWMM +0.${30 + (i % 5) * 12}m`, px + 8, py - 4);
+          // Only show label on hover
+          if (isHovered) {
+            const depthText = `+0.${30 + (i % 5) * 12}m`;
+            const headText = `${(4.2 + (i % 4) * 0.8).toFixed(1)}m`;
+            const labelText = `SWMM Surcharge ${depthText} (Head: ${headText})`;
+
+            ctx.font = 'bold 10px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+            const metrics = ctx.measureText(labelText);
+            const boxW = metrics.width + 16;
+            const boxH = 24;
+            const boxX = px + 10;
+            const boxY = py - 28;
+
+            ctx.fillStyle = 'rgba(15, 23, 42, 0.95)';
+            ctx.strokeStyle = '#f43f5e';
+            ctx.lineWidth = 1.2;
+            if (ctx.roundRect) {
+              ctx.beginPath();
+              ctx.roundRect(boxX, boxY, boxW, boxH, 4);
+              ctx.fill();
+              ctx.stroke();
+            } else {
+              ctx.fillRect(boxX, boxY, boxW, boxH);
+              ctx.strokeRect(boxX, boxY, boxW, boxH);
+            }
+
+            ctx.fillStyle = '#f8fafc';
+            ctx.fillText(labelText, boxX + 8, boxY + 16);
+          }
+
           ctx.restore();
         }
       }
@@ -787,7 +817,7 @@ export const MapView: React.FC<MapViewProps> = ({
     }
 
     ctx.restore();
-  }, [transform, layers, basemapStyle, depthGrid, roads, roadImpacts, drainage, filteredAssets, activeRoute, gridMeta, minDepthThreshold, utmZone, radarAngle, currentLead, telemetry, cityMeta]);
+  }, [transform, layers, basemapStyle, depthGrid, roads, roadImpacts, drainage, filteredAssets, activeRoute, gridMeta, minDepthThreshold, utmZone, radarAngle, currentLead, telemetry, cityMeta, hoveredSurchargeNode]);
 
   useEffect(() => {
     let animId = requestAnimationFrame(draw);
@@ -827,10 +857,50 @@ export const MapView: React.FC<MapViewProps> = ({
         panX: dragStart.startPanX + (e.clientX - dragStart.x),
         panY: dragStart.startPanY + (e.clientY - dragStart.y),
       }));
+      if (hoveredSurchargeNode) setHoveredSurchargeNode(null);
+    } else {
+      // Hit testing for 1D pipe surcharge nodes on hover
+      const rect = canvasRef.current?.getBoundingClientRect();
+      if (rect && layers.flood_1d && drainage) {
+        const mx = e.clientX - rect.left;
+        const my = e.clientY - rect.top;
+        const w = rect.width;
+        const h = rect.height;
+
+        const nodes = [...(drainage.inlets || []), ...(drainage.outfalls || [])];
+        let foundNode: typeof hoveredSurchargeNode = null;
+
+        for (let i = 0; i < nodes.length; i++) {
+          if (i % 3 !== 0) continue; // Only surcharged nodes
+          const pt = nodes[i];
+          const [px, py] = worldToScreen(pt[0], pt[1], gridMeta, transform, w, h);
+          const hitRadius = Math.max(12, 16 * transform.zoom);
+          const dist = Math.hypot(mx - px, my - py);
+
+          if (dist <= hitRadius + 4) {
+            foundNode = { index: i, x: px, y: py };
+            break;
+          }
+        }
+
+        if (
+          (!foundNode && hoveredSurchargeNode) ||
+          (foundNode && (!hoveredSurchargeNode || hoveredSurchargeNode.index !== foundNode.index))
+        ) {
+          setHoveredSurchargeNode(foundNode);
+        }
+      } else if (hoveredSurchargeNode) {
+        setHoveredSurchargeNode(null);
+      }
     }
   };
 
   const handleMouseUp = () => setIsDragging(false);
+
+  const handleMouseLeave = () => {
+    setIsDragging(false);
+    if (hoveredSurchargeNode) setHoveredSurchargeNode(null);
+  };
 
   const handleWheel = (e: React.WheelEvent) => {
     e.preventDefault();
@@ -851,11 +921,12 @@ export const MapView: React.FC<MapViewProps> = ({
         height: '100%',
         background: '#000000',
         overflow: 'hidden',
-        cursor: isDragging ? 'grabbing' : 'grab',
+        cursor: isDragging ? 'grabbing' : (hoveredSurchargeNode ? 'pointer' : 'grab'),
       }}
       onMouseDown={handleMouseDown}
       onMouseMove={handleMouseMove}
       onMouseUp={handleMouseUp}
+      onMouseLeave={handleMouseLeave}
       onWheel={handleWheel}
     >
       <canvas
