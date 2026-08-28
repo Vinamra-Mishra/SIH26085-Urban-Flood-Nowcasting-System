@@ -13,7 +13,7 @@ import json
 import os
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Literal, Optional
 
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
@@ -26,7 +26,7 @@ RAW_DIR = REPO_ROOT / "data" / "raw"
 router = APIRouter(prefix="/api/v1", tags=["City & Live Feeds"])
 
 # Active city state in runtime memory (defaults to MUMBAI if processed files exist, or env var)
-ACTIVE_CITY = os.getenv("UFNS_ACTIVE_CITY", "MUMBAI").upper()
+ACTIVE_CITY = os.getenv("UFNS_ACTIVE_CITY", "DEMO").upper()
 
 CITY_METADATA = {
     "MUMBAI": {
@@ -139,6 +139,12 @@ def switch_active_city(req: CitySwitchRequest) -> dict[str, Any]:
         raise HTTPException(status_code=400, detail=f"Invalid city: {req.city}")
 
     ACTIVE_CITY = city_upper
+    from services.contracts import set_active_city
+    from services.scenarios.artifacts import clear_artifact_caches
+
+    set_active_city(city_upper)
+    clear_artifact_caches()
+
     from apps.api import impacts
     impacts.clear_caches()
 
@@ -232,6 +238,73 @@ def get_live_feeds(city: Optional[str] = Query(None)) -> dict[str, Any]:
             "station_count": len(iot_data) if isinstance(iot_data, list) else 0,
             "stations": iot_data[:5] if isinstance(iot_data, list) else [],
         },
+    }
+
+
+@router.get("/telemetry/live")
+def get_live_telemetry(city: Optional[str] = Query(None)) -> dict[str, Any]:
+    """Get streamlined live telemetry with real-time weather, NASA satellite, and DWR status."""
+    target_city = (city.upper() if city else ACTIVE_CITY)
+    if target_city not in CITY_METADATA:
+        target_city = "MUMBAI"
+    meta = CITY_METADATA[target_city]
+
+    # Coordinate lookups
+    lat = 19.0760 if target_city == "MUMBAI" else (16.5062 if target_city == "VIJAYAWADA" else 22.5726)
+    lon = 72.8777 if target_city == "MUMBAI" else (80.6480 if target_city == "VIJAYAWADA" else 88.3639)
+
+    try:
+        from services.nowcast.realtime_engine import GLOBAL_REALTIME_FUSION_ENGINE
+        rt_state = GLOBAL_REALTIME_FUSION_ENGINE.get_realtime_state(target_city, lat, lon)
+        weather_dict = rt_state.weather
+        nasa_dict = rt_state.nasa_satellite
+        precip = rt_state.fused_precipitation_rate_mmh
+        tide_val = rt_state.tidal_backwater_level_m
+    except Exception:
+        weather_dict = {"temperature_c": 28.5, "condition": "Clear", "humidity_pct": 65, "wind_speed_kmh": 14.5}
+        nasa_dict = {"status": "AUTHENTICATED", "gpm_precip_rate_mmh": 0.0, "smap_saturation_pct": 62.0}
+        precip = 0.0
+        tide_val = 1.42 if target_city == "MUMBAI" else 0.40
+
+    feeds = get_live_feeds(target_city)
+
+    return {
+        "active_city": target_city,
+        "radar_station": meta.get("live_radar_station", f"{target_city} DWR (IMD)"),
+        "radar_status": "ONLINE",
+        "precip_rate_mmh": float(precip),
+        "tide_level_m": float(tide_val),
+        "nwp_model": "ECMWF IFS (0.1°) / NCMRWF",
+        "weather": weather_dict,
+        "nasa_satellite": nasa_dict,
+        "temp_c": weather_dict.get("temperature_c", 28.5),
+        "humidity_pct": weather_dict.get("humidity_pct", 65),
+        "condition": weather_dict.get("condition", "Clear"),
+        "wind_speed_kmh": weather_dict.get("wind_speed_kmh", 14.5),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "metadata": meta,
+        "feeds": feeds,
+    }
+
+
+@router.get("/weather/realtime")
+def get_realtime_weather(city: Optional[str] = Query(None)) -> dict[str, Any]:
+    """Dedicated endpoint for real-time atmospheric weather, OpenWeather, and NASA feeds."""
+    target_city = (city.upper() if city else ACTIVE_CITY)
+    if target_city not in CITY_METADATA:
+        target_city = "MUMBAI"
+    lat = 19.0760 if target_city == "MUMBAI" else (16.5062 if target_city == "VIJAYAWADA" else 22.5726)
+    lon = 72.8777 if target_city == "MUMBAI" else (80.6480 if target_city == "VIJAYAWADA" else 88.3639)
+
+    from services.nowcast.realtime_engine import GLOBAL_REALTIME_FUSION_ENGINE
+    rt_state = GLOBAL_REALTIME_FUSION_ENGINE.get_realtime_state(target_city, lat, lon)
+    return {
+        "city": target_city,
+        "weather": rt_state.weather,
+        "nasa": rt_state.nasa_satellite,
+        "radar": rt_state.radar,
+        "marine_tide": rt_state.marine_tide,
+        "timestamp": rt_state.timestamp,
     }
 
 

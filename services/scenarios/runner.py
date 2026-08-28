@@ -406,3 +406,59 @@ def run_all_scenarios(
         art_dir = artifact_root / sid.lower() if artifact_root is not None else None
         out[sid] = run_scenario(srec, dem, issue_time=issue_time, artifact_dir=art_dir)
     return out
+
+
+def run_custom_scenario(
+    rainfall_profile: Any,
+    drainage_condition: Any | None = None,
+    dem: np.ndarray | None = None,
+    scenario_id: str = "CUSTOM_EVENT",
+    duration_minutes: int = 180,
+    manning_n: float = 0.035,
+    cd: float = 0.60,
+    culvert_blockage_pct: float = 0.0,
+    artifact_dir: Optional[Path] = None,
+) -> ScenarioResult:
+    """Run an arbitrary custom/historical storm scenario on the physical coupled engine."""
+    from services.ingestion.dem import synthetic_dem
+    from services.scenarios.drainage import DRAINAGE_CONDITIONS
+
+    if dem is None:
+        dem = synthetic_dem()
+
+    if drainage_condition is None:
+        cond_key = "D_BLOCKED" if culvert_blockage_pct >= 50.0 else "D_NORMAL"
+        drainage_condition = DRAINAGE_CONDITIONS[cond_key]
+
+    srec = ScenarioRecord(
+        scenario_id=scenario_id,
+        display_name=f"Custom Hydro Scenario ({rainfall_profile.display_name})",
+        description=f"On-demand simulation of {rainfall_profile.display_name} with {culvert_blockage_pct:.0f}% blockage.",
+        rainfall_profile=rainfall_profile,
+        rainfall_status=rainfall_profile.review_status.value,
+        drainage_condition=drainage_condition,
+        duration_minutes=duration_minutes,
+        start_time=datetime(2026, 8, 21, 0, 0, tzinfo=timezone.utc),
+        initial_condition_policy="dry_bed_uniform",
+        coupling_timestep_s=5,
+        snapshot_interval_minutes=15,
+        surface_config_fingerprint="surface-custom",
+        swmm_fixture_fingerprint=drainage_condition.inp_fingerprint,
+        assumptions=("Custom scenario execution with unified M4 physical engine.",),
+        limitations=("Demonstration and historical event replay.",),
+        provenance_note="Parametric/Historical flood replay.",
+        fingerprint=hashlib.sha256(f"{scenario_id}:{rainfall_profile.fingerprint}:{culvert_blockage_pct}".encode("utf-8")).hexdigest(),
+        manning_n=manning_n,
+        horton_f0_mmh=50.0,
+        horton_fmin_mmh=10.0,
+        horton_k_s1=0.001,
+        microstore_m=0.002,
+        cd=cd,
+        ao_per_inlet=0.070686,
+        spatial_pattern="convective_cell",
+        extent_threshold_m=0.05,
+        seed=20260822,
+        external_inflow_m3s=0.0,
+    )
+    return run_scenario(srec, dem, artifact_dir=artifact_dir)
+

@@ -47,7 +47,7 @@ VEHICLE_PROFILES: dict[str, VehicleProfile] = {
     "AMBULANCE": VehicleProfile(
         profile_id="AMBULANCE",
         name="Emergency Ambulance",
-        icon="🚑",
+        icon="ambulance",
         max_depth_m=0.20,
         base_speed_kmh=45.0,
         min_speed_factor=0.30,
@@ -56,7 +56,7 @@ VEHICLE_PROFILES: dict[str, VehicleProfile] = {
     "SUV": VehicleProfile(
         profile_id="SUV",
         name="SUV / High Clearance",
-        icon="🚙",
+        icon="suv",
         max_depth_m=0.30,
         base_speed_kmh=45.0,
         min_speed_factor=0.25,
@@ -65,7 +65,7 @@ VEHICLE_PROFILES: dict[str, VehicleProfile] = {
     "RESCUE_4X4": VehicleProfile(
         profile_id="RESCUE_4X4",
         name="Emergency / Rescue 4x4",
-        icon="🚒",
+        icon="rescue_4x4",
         max_depth_m=0.60,
         base_speed_kmh=35.0,
         min_speed_factor=0.25,
@@ -74,7 +74,7 @@ VEHICLE_PROFILES: dict[str, VehicleProfile] = {
     "HEAVY_RESCUE": VehicleProfile(
         profile_id="HEAVY_RESCUE",
         name="NDRF / Fire Rescue Truck",
-        icon="🚒",
+        icon="heavy_rescue",
         max_depth_m=0.45,
         base_speed_kmh=30.0,
         min_speed_factor=0.25,
@@ -83,7 +83,7 @@ VEHICLE_PROFILES: dict[str, VehicleProfile] = {
     "LIGHT_VEHICLE": VehicleProfile(
         profile_id="LIGHT_VEHICLE",
         name="Civilian Light Vehicle / Car",
-        icon="🚗",
+        icon="car",
         max_depth_m=0.10,
         base_speed_kmh=50.0,
         min_speed_factor=0.20,
@@ -92,7 +92,7 @@ VEHICLE_PROFILES: dict[str, VehicleProfile] = {
     "PEDESTRIAN": VehicleProfile(
         profile_id="PEDESTRIAN",
         name="Pedestrian Evacuee",
-        icon="🚶",
+        icon="pedestrian",
         max_depth_m=0.05,
         base_speed_kmh=4.5,
         min_speed_factor=0.40,

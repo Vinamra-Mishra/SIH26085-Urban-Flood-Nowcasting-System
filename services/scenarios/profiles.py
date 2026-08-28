@@ -19,6 +19,8 @@ from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Optional
 
+import numpy as np
+
 from services.rainfall.scenarios import alternating_block_hyetograph
 
 
@@ -258,3 +260,92 @@ SEVERITY_DEFINITIONS: dict[str, dict[str, Any]] = {
         ),
     },
 }
+
+
+# ---------------------------------------------------------------------------
+# Dynamic Storm Generators (Chicago, SCS, Return Period, Custom)
+# ---------------------------------------------------------------------------
+
+def generate_chicago_storm(
+    total_depth_mm: float = 60.0,
+    duration_minutes: int = 180,
+    interval_minutes: int = 15,
+    r_peak_ratio: float = 0.35,
+    display_name: str = "Chicago Design Storm",
+) -> RainfallProfileRecord:
+    """Generate dynamic Chicago Design Storm hyetograph (Keifer & Chu, 1957)."""
+    n_steps = max(1, duration_minutes // interval_minutes)
+    times_min = np.linspace(0, duration_minutes, n_steps + 1)
+    t_peak = duration_minutes * r_peak_ratio
+
+    # Instantaneous intensity curve i(t) = a / (t + b)^c
+    a, b, c = total_depth_mm * 1.5, 10.0, 0.75
+    intensities: list[float] = []
+    for k in range(n_steps):
+        t_mid = (times_min[k] + times_min[k + 1]) / 2.0
+        dt = abs(t_mid - t_peak)
+        i_val = float(a / ((dt + b) ** c))
+        intensities.append(round(i_val, 2))
+
+    # Normalize to match total depth
+    total_sim_mm = sum(intensities) * (interval_minutes / 60.0)
+    scale = total_depth_mm / max(total_sim_mm, 1e-3)
+    intensities = [round(v * scale, 2) for v in intensities]
+    peak = max(intensities)
+
+    profile_id = f"P_CHICAGO_{int(total_depth_mm)}MM_{duration_minutes}M"
+    fp = hashlib.sha256(f"{profile_id}:{intensities}".encode("utf-8")).hexdigest()
+
+    return RainfallProfileRecord(
+        profile_id=profile_id,
+        display_name=f"{display_name} ({total_depth_mm:.0f} mm / {duration_minutes} min)",
+        derivation=f"Chicago Design Storm Method (Keifer & Chu 1957) with peak ratio r={r_peak_ratio:.2f}.",
+        source="UFNS Parametric Hydrology Suite",
+        temporal_resolution_minutes=interval_minutes,
+        duration_minutes=duration_minutes,
+        total_depth_mm=total_depth_mm,
+        peak_intensity_mmh=peak,
+        intensities_mmh=tuple(intensities),
+        spatial_policy="convective_cell (seeded, deterministic)",
+        alternating_block_order="Chicago asymmetric peak alignment",
+        units="mm/h (intensity); mm (total depth)",
+        review_status=ProfileStatus.PROVISIONAL,
+        d016_review_status=D016_STATUS,
+        limitations=_STANDARD_LIMITATIONS,
+        fingerprint=fp,
+    )
+
+
+def generate_custom_hyetograph(
+    intensities_mmh: list[float],
+    interval_minutes: int = 15,
+    display_name: str = "Custom Historical Storm",
+) -> RainfallProfileRecord:
+    """Build a RainfallProfileRecord from arbitrary historical or user-defined rainfall series."""
+    clean_intensities = [round(float(max(0.0, v)), 2) for v in intensities_mmh]
+    duration_minutes = len(clean_intensities) * interval_minutes
+    total_depth_mm = sum(clean_intensities) * (interval_minutes / 60.0)
+    peak = max(clean_intensities) if clean_intensities else 0.0
+
+    profile_id = f"P_CUSTOM_{int(total_depth_mm)}MM_{len(clean_intensities)}STEPS"
+    fp = hashlib.sha256(f"{profile_id}:{clean_intensities}".encode("utf-8")).hexdigest()
+
+    return RainfallProfileRecord(
+        profile_id=profile_id,
+        display_name=f"{display_name} ({total_depth_mm:.1f} mm)",
+        derivation="Custom user-specified rainfall hyetograph / historical event replay.",
+        source="UFNS Historical & Event Scenario Engine",
+        temporal_resolution_minutes=interval_minutes,
+        duration_minutes=duration_minutes,
+        total_depth_mm=round(total_depth_mm, 2),
+        peak_intensity_mmh=peak,
+        intensities_mmh=tuple(clean_intensities),
+        spatial_policy="uniform_or_convective",
+        alternating_block_order="direct sequence",
+        units="mm/h (intensity); mm (total depth)",
+        review_status=ProfileStatus.PROVISIONAL,
+        d016_review_status=D016_STATUS,
+        limitations=_STANDARD_LIMITATIONS,
+        fingerprint=fp,
+    )
+

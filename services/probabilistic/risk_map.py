@@ -12,7 +12,6 @@ from typing import Any, List, Optional
 
 import numpy as np
 
-from apps.api import impacts
 from services.ingestion.dem import GRID_CELLS
 from services.probabilistic.ensemble import (
     EnsembleMember,
@@ -21,6 +20,7 @@ from services.probabilistic.ensemble import (
 )
 from services.routing.impact import rasterize_line
 from services.routing.roads import NETWORK
+from services.scenarios.artifacts import get_depth_grid
 
 
 def calculate_brier_score(prob_grid: np.ndarray, obs_binary_grid: np.ndarray) -> float:
@@ -98,10 +98,10 @@ class ProbabilisticRiskEngine:
         member_count: int = 10,
     ) -> ProbabilisticRiskResult:
         """Run multi-member ensemble propagation and spatial exceedance probability analysis."""
-        base_grid = np.array(impacts.depth_grid(scenario_id, lead_minutes), dtype=np.float64)
+        base_grid = np.array(get_depth_grid(scenario_id, lead_minutes), dtype=np.float64)
         members = generate_ensemble_members(member_count)
 
-        depth_stack = np.zeros((len(members), GRID_CELLS, GRID_CELLS), dtype=np.float64)
+        depth_stack = np.zeros((len(members), base_grid.shape[0], base_grid.shape[1]), dtype=np.float64)
         member_metrics: list[dict[str, Any]] = []
 
         for idx, m in enumerate(members):
@@ -148,7 +148,8 @@ class ProbabilisticRiskEngine:
 
             member_road_depths: list[float] = []
             for m_idx in range(len(members)):
-                seg_d = [float(depth_stack[m_idx, r, c]) for r, c in cells if 0 <= r < GRID_CELLS and 0 <= c < GRID_CELLS]
+                h_dim, w_dim = depth_stack.shape[1], depth_stack.shape[2]
+                seg_d = [float(depth_stack[m_idx, r, c]) for r, c in cells if 0 <= r < h_dim and 0 <= c < w_dim]
                 member_road_depths.append(max(seg_d) if seg_d else 0.0)
 
             arr_d = np.array(member_road_depths)

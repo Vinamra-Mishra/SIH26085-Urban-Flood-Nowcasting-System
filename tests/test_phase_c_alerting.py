@@ -254,7 +254,7 @@ class TestAlertDispatcher:
             info=[info],
         )
         wa = dispatcher.format_whatsapp_message(alert)
-        assert "🚨" in wa
+        assert "[CRITICAL ALERT]" in wa
         assert "Ring Road" in wa
         assert "http://localhost:8000" in wa
 

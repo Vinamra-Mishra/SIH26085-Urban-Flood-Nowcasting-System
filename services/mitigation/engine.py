@@ -13,9 +13,11 @@ from typing import Any, List, Optional
 import numpy as np
 from pydantic import BaseModel, Field
 
-from apps.api import impacts, store
 from services.ingestion.dem import CELL_SIZE_M, DOMAIN_M, GRID_CELLS
+from services.routing.impact import rasterize_line
+from services.routing.policy import POLICY, classify
 from services.routing.roads import NETWORK
+from services.scenarios.artifacts import VALID_SCENARIO_IDS, get_depth_grid
 
 
 # ---------------------------------------------------------------------------
@@ -80,19 +82,31 @@ class InterventionScenarioEngine:
     def simulate(self, config: InterventionConfig, return_raster: bool = False) -> MitigationResult:
         """Dynamically simulate the effect of green and grey interventions on a baseline scenario."""
         clean_sid = config.scenario_id.upper()
-        if clean_sid not in store.VALID_SCENARIO_IDS:
+        if clean_sid not in VALID_SCENARIO_IDS:
             clean_sid = "S4"
 
         lead = config.lead_minutes
 
-        # 1. Fetch immutable baseline depth grid and frame
-        base_grid = np.array(impacts.depth_grid(clean_sid, lead), dtype=np.float64)
-        base_frame = impacts.frame(clean_sid, lead)
-        base_road_impacts = base_frame.get("road_impacts", [])
+        # 1. Fetch immutable baseline depth grid
+        base_grid = np.array(get_depth_grid(clean_sid, lead), dtype=np.float64)
 
-        base_impassable = [r["road_id"] for r in base_road_impacts if r.get("classification") == "IMPASSABLE"]
-        base_caution = [r["road_id"] for r in base_road_impacts if r.get("classification") == "CAUTION"]
-        base_dry = [r["road_id"] for r in base_road_impacts if r.get("classification") == "DRY"]
+        base_impassable = []
+        base_caution = []
+        base_dry = []
+        for road in NETWORK.segments:
+            r1, c1 = road.start_cell
+            r2, c2 = road.end_cell
+            cells = rasterize_line(r1, c1, r2, c2)
+            depths = [float(base_grid[r, c]) for r, c in cells if 0 <= r < GRID_CELLS and 0 <= c < GRID_CELLS]
+            if not depths:
+                continue
+            cls = classify(max(depths), POLICY)
+            if cls == "IMPASSABLE":
+                base_impassable.append(road.road_id)
+            elif cls in ("CAUTION", "HIGH_IMPACT", "LOW_IMPACT"):
+                base_caution.append(road.road_id)
+            else:
+                base_dry.append(road.road_id)
 
         base_max_d = float(np.max(base_grid)) if base_grid.size > 0 else 0.0
         base_inundated_cells = int(np.count_nonzero(base_grid >= 0.05))
@@ -106,7 +120,7 @@ class InterventionScenarioEngine:
         # Intervention A: Desilting / Unblocking Culvert IN-004
         if config.unblock_culvert_in004 and clean_sid == "S4":
             # Counterfactual comparison with clean baseline S3 + localized surcharge relief around IN-004
-            s3_grid = np.array(impacts.depth_grid("S3", lead), dtype=np.float64)
+            s3_grid = np.array(get_depth_grid("S3", lead), dtype=np.float64)
             unblock_delta = np.maximum(0.0, base_grid - s3_grid)
             # Hydraulic surcharge relief around street corridor & culvert junction
             corridor_mask = (base_grid > 0.20)
@@ -159,9 +173,6 @@ class InterventionScenarioEngine:
         mit_impassable: list[str] = []
         mit_caution: list[str] = []
         mit_dry: list[str] = []
-
-        from services.routing.impact import rasterize_line
-        from services.routing.policy import POLICY, classify
 
         # Re-evaluate all road segments across mitigated depth raster using standard POLICY
         for road in NETWORK.segments:

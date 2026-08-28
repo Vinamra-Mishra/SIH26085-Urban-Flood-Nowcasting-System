@@ -9,11 +9,11 @@ from typing import Any
 
 import numpy as np
 
-from apps.api import rainfall_api
 from services.ingestion.dem import synthetic_dem
 from services.nowcast.engine import PersistenceNowcast
 from services.nowcast.providers import RainfallObservation
 from services.nowcast.quality import QualityResult, validate_observation
+from services.nowcast.service import fetch_latest_nowcast_records, get_nowcast_config
 from services.projection import MODEL_VERSION
 from services.projection.adapter import (
     build_runconfig_from_frames,
@@ -90,7 +90,7 @@ class ProjectionPipeline:
     def build_from_latest(self, config_id: str) -> ProjectionBundle:
         get_projection_config(config_id)
         nowcast_t0 = perf_counter()
-        _provider, observation, quality, records = rainfall_api.fetch_latest_nowcast_records()
+        _provider, observation, quality, records = fetch_latest_nowcast_records()
         nowcast_ms = (perf_counter() - nowcast_t0) * 1000.0
         if observation is None:
             raise ProjectionUnavailableError("no rainfall observation available for projection")
@@ -127,7 +127,7 @@ class ProjectionPipeline:
         timings_ms = dict(base_timings_ms or {})
         if nowcast_records is None:
             t0 = perf_counter()
-            engine = PersistenceNowcast(rainfall_api.get_nowcast_config())
+            engine = PersistenceNowcast(get_nowcast_config())
             nowcast_records = engine.generate(observation, quality)
             timings_ms.setdefault("nowcast_generation", (perf_counter() - t0) * 1000.0)
         if not nowcast_records:

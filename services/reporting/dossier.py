@@ -172,25 +172,45 @@ class FloodIncidentDossier:
 
 def compile_dossier_from_scenario(scenario_id: str = "S4", lead_minutes: int = 110) -> FloodIncidentDossier:
     """Aggregate simulation, hydraulic ledger, road impact, and CAP alert data into a complete dossier."""
-    from apps.api import impacts, store
-    
+    from services.routing.impact import rasterize_line
+    from services.routing.policy import POLICY, classify
+    from services.routing.roads import NETWORK
+    from services.scenarios.artifacts import (
+        VALID_SCENARIO_IDS,
+        get_depth_grid,
+        load_results,
+        scenario_metadata,
+    )
+
     clean_scenario = scenario_id.upper()
-    if clean_scenario not in store.VALID_SCENARIO_IDS:
+    if clean_scenario not in VALID_SCENARIO_IDS:
         clean_scenario = "S4"
 
-    res_dict = store.scenario_result(clean_scenario)
-    meta_dict = store.scenario_metadata(clean_scenario)
-    frame_dict = impacts.frame(clean_scenario, lead_minutes)
-    road_impacts = frame_dict.get("road_impacts", [])
+    all_results = load_results()
+    res_dict = all_results.get(clean_scenario, {})
+    meta_dict = scenario_metadata(clean_scenario)
     now_utc = datetime.now(timezone.utc)
     dossier_id = f"UFNS-DOSSIER-{now_utc.strftime('%Y%m%d%H%M%S')}-{clean_scenario}-{lead_minutes:03d}"
 
     # Reconstruct 2D depth grid
-    depth_flat = frame_dict.get("depth", [])
-    if len(depth_flat) == 134 * 134:
-        depth_arr = np.array(depth_flat, dtype=float).reshape((134, 134))
-    else:
-        depth_arr = np.array(impacts.depth_grid(clean_scenario, lead_minutes), dtype=float)
+    depth_arr = np.array(get_depth_grid(clean_scenario, lead_minutes), dtype=float)
+
+    # Compute road impacts from depth_arr
+    road_impacts = []
+    for road in NETWORK.segments:
+        r1, c1 = road.start_cell
+        r2, c2 = road.end_cell
+        cells = rasterize_line(r1, c1, r2, c2)
+        d_list = [float(depth_arr[r, c]) for r, c in cells if 0 <= r < depth_arr.shape[0] and 0 <= c < depth_arr.shape[1]]
+        max_d_road = max(d_list) if d_list else 0.0
+        cls = classify(max_d_road, POLICY)
+        road_impacts.append({
+            "road_id": road.road_id,
+            "road_class": road.road_class,
+            "name": road.name,
+            "max_depth_m": max_d_road,
+            "classification": cls,
+        })
 
     screener = EarlyWarningScreener()
     cap_alert_obj = screener.screen_simulation_frame(
@@ -205,8 +225,8 @@ def compile_dossier_from_scenario(scenario_id: str = "S4", lead_minutes: int = 1
                  if s.get("lead_minutes") == lead_minutes), {})
     max_d = float(snap.get("max_depth_m", np.max(depth_arr) if depth_arr.size > 0 else 0.0))
     inundated_area = float(snap.get("flooded_area_m2", snap.get("inundated_area_m2", float(np.count_nonzero(depth_arr >= 0.05) * 900.0) if depth_arr.size > 0 else 0.0)))
-    surf_stor = float(snap.get("total_flood_volume_m3", snap.get("surface_storage_m3", frame_dict.get("drainage", {}).get("surface_storage_m3", float(np.sum(depth_arr) * 900.0) if depth_arr.size > 0 else 0.0))))
-    inundated_fraction = float(snap.get("inundated_fraction", (inundated_area / (134 * 134 * 900.0)) if depth_arr.size > 0 else 0.0))
+    surf_stor = float(snap.get("total_flood_volume_m3", snap.get("surface_storage_m3", float(np.sum(depth_arr) * 900.0) if depth_arr.size > 0 else 0.0)))
+    inundated_fraction = float(snap.get("inundated_fraction", (inundated_area / (depth_arr.shape[0] * depth_arr.shape[1] * 900.0)) if depth_arr.size > 0 else 0.0))
 
     # Impassable roads
     impassable_roads = [imp.get("road_id", "") for imp in road_impacts if imp.get("classification") == "IMPASSABLE"]
@@ -483,14 +503,14 @@ class PDFDossierCompiler:
         elements.append(mass_table)
         if dossier.mass_balance.certified_continuity_pass and dossier.mass_balance.relative_error_pct is not None:
             elements.append(Paragraph(
-                f"<font size=7 color='#2e7d32'>✔ <b>FORMAL CERTIFICATION</b>: Global hydrodynamic fluid continuity error "
+                f"<font size=7 color='#2e7d32'>[PASS] <b>FORMAL CERTIFICATION</b>: Global hydrodynamic fluid continuity error "
                 f"({dossier.mass_balance.relative_error_pct:.4f}%) satisfies the numerical threshold (&lt;0.05%).</font>",
                 self.style_body,
             ))
         else:
             err_disp = f"({dossier.mass_balance.relative_error_pct:.4f}%)" if dossier.mass_balance.relative_error_pct is not None else "(N/A)"
             elements.append(Paragraph(
-                f"<font size=7 color='#c82848'>✘ <b>NOT CERTIFIED</b>: Global hydrodynamic fluid continuity error "
+                f"<font size=7 color='#c82848'>[FAIL] <b>NOT CERTIFIED</b>: Global hydrodynamic fluid continuity error "
                 f"{err_disp} exceeds the numerical threshold (&lt;0.05%) or residual was unverified.</font>",
                 self.style_body,
             ))

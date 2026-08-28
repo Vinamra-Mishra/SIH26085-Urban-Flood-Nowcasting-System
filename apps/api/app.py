@@ -36,10 +36,18 @@ from services.scenarios.profiles import D016_HUMAN_REVIEW, D016_STATUS
 API_VERSION = "2.2.0"
 APP_TITLE = "UFNS — Urban Flood Nowcasting System (Coupled 1D/2D + Probabilistic Forecasting)"
 
+from fastapi.staticfiles import StaticFiles
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
-INDEX_HTML = REPO_ROOT / "apps" / "web" / "index.html"
+DIST_DIR = REPO_ROOT / "apps" / "web" / "dist"
+INDEX_HTML = DIST_DIR / "index.html" if (DIST_DIR / "index.html").exists() else REPO_ROOT / "apps" / "web" / "index.html"
 
 app = FastAPI(title=APP_TITLE, version=API_VERSION)
+
+# Mount compiled assets if available
+if (DIST_DIR / "assets").exists():
+    app.mount("/assets", StaticFiles(directory=str(DIST_DIR / "assets")), name="assets")
+
 app.include_router(city_api.router)
 app.include_router(calibration_api.router)
 app.include_router(alerts_api.router)

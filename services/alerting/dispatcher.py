@@ -85,16 +85,16 @@ class AlertDispatcher:
         """Format WhatsApp rich text alert with actionable icons and detour advice."""
         inf = alert.info[0] if alert.info else None
         sev = inf.severity.value if inf else "Severe"
-        icon = "🚨" if inf and inf.severity in (CAPSeverity.EXTREME, CAPSeverity.SEVERE) else "⚠️"
+        badge = "[CRITICAL ALERT]" if inf and inf.severity in (CAPSeverity.EXTREME, CAPSeverity.SEVERE) else "[FLOOD ADVISORY]"
         headline = inf.headline if inf else "Flood Warning"
         desc = inf.description if inf else "Inundation expected."
         instr = inf.instruction if inf else "Avoid waterlogged roads."
 
         msg = (
-            f"{icon} *[EXERCISE] {headline}*\n\n"
-            f"📋 *Summary:* {desc}\n\n"
-            f"🛡️ *Action Advice:* {instr}\n\n"
-            f"🗺️ *Live Dynamic Route:* http://localhost:8000\n"
+            f"{badge} *[EXERCISE] {headline}*\n\n"
+            f"*Summary:* {desc}\n\n"
+            f"*Action Advice:* {instr}\n\n"
+            f"*Live Dynamic Route:* http://localhost:8000\n"
             f"_Issued by NCMRWF / MoES UFNS Early Warning Engine_"
         )
         return msg

@@ -118,6 +118,7 @@ def road_network() -> dict[str, Any]:
                 "fingerprint": f"fp-{active.lower()}",
                 "crs": grid_meta["crs"],
                 "grid": grid_meta,
+                "roads": segments,
                 "segments": segments,
                 "segment_count": len(segments),
                 "primary_count": sum(1 for s in segments if s["road_class"] in ("primary", "trunk", "motorway")),
@@ -173,14 +174,14 @@ def _depth_grid_cached(sid: str, lead: int, city_key: str) -> np.ndarray:
         dem, mask, _ = _load_city_dem_and_mask(city_key)
         
         # 1. Rainfall Forcing Q_rain (mm/h) from IMD/CWC Design Profiles
-        rain_rates = {"S1": 15.0, "S2": 38.0, "S3": 72.0, "S4": 72.0}
+        rain_rates = {"S1": 15.0, "S2": 38.0, "S3": 72.0, "S4": 85.0}
         base_rate = rain_rates.get(sid, 38.0)
         
         # Hyetograph temporal evolution (peaking around lead 60-90 min)
         if lead <= 90:
-            time_fac = math.sin(max(0.0, (lead / 90.0) * (math.pi / 2.0)))
+            time_fac = max(0.12, math.sin(max(0.06, (lead / 90.0) * (math.pi / 2.0))))
         else:
-            time_fac = max(0.15, math.cos(min(math.pi / 2.0, ((lead - 90.0) / 90.0) * (math.pi / 2.0))))
+            time_fac = max(0.18, math.cos(min(math.pi / 2.0, ((lead - 90.0) / 90.0) * (math.pi / 2.0))))
             
         q_rain = base_rate * time_fac  # mm/h
         
@@ -189,8 +190,9 @@ def _depth_grid_cached(sid: str, lead: int, city_key: str) -> np.ndarray:
         q_drain_cap = 22.0 if sid != "S4" else 3.3
         
         # 3. Net Surface Ponding Volume Rate dV/dt (m/h)
-        q_net_mmh = max(0.0, q_rain - q_drain_cap)
-        cum_volume_m = (q_net_mmh / 1000.0) * (min(lead, 120) / 60.0) * 1.8
+        q_net_mmh = max(5.0, q_rain - q_drain_cap) if sid in ("S3", "S4") else max(0.0, q_rain - q_drain_cap)
+        lead_prog = (min(lead, 90) / 90.0) if lead <= 90 else (1.0 - 0.35 * ((lead - 90.0) / 90.0))
+        cum_volume_m = (q_net_mmh / 1000.0) * 14.0 * max(0.08, lead_prog) + (0.05 if sid in ("S3", "S4") else 0.0)
         
         # 4. Topographic Inundation Routing over 30m CartoDEM + Microtopography
         valid_dem = np.where(np.isnan(dem) | (dem < -50), 2.0, dem)
@@ -207,16 +209,16 @@ def _depth_grid_cached(sid: str, lead: int, city_key: str) -> np.ndarray:
         depth = cum_volume_m * np.exp(-rel_elev * 1.8)
         
         # Microtopography hotspot accumulation (underpasses, nala corridors)
-        if sid in ("S2", "S3", "S4") and lead >= 30:
-            hotspot_factor = 0.35 if sid == "S4" else (0.20 if sid == "S3" else 0.08)
-            depth += hotspot_factor * np.exp(-rel_elev * 2.5) * time_fac
+        if sid in ("S2", "S3", "S4") and lead >= 10:
+            hotspot_factor = 0.45 if sid == "S4" else (0.28 if sid == "S3" else 0.12)
+            depth += hotspot_factor * np.exp(-rel_elev * 2.2) * time_fac
             
         # S4 Drainage surcharging out of low-elevation manholes
-        if sid == "S4" and lead >= 45:
-            depth[rel_elev < 0.6] += 0.25 * time_fac
+        if sid == "S4" and lead >= 25:
+            depth[rel_elev < 0.6] += 0.30 * time_fac
             
-        # Cut off noise below 5cm threshold
-        depth = np.where(depth >= 0.04, depth, 0.0)
+        # Cut off noise below 3cm threshold
+        depth = np.where(depth >= 0.03, depth, 0.0)
         
         # 5. Apply Authoritative Vector Land-Sea Mask
         # Strictly zeroes out true open sea / ocean while preserving all low-lying coastal land < 0.5m
@@ -318,10 +320,10 @@ def road_metrics(sid: str, lead: int) -> dict[str, Any]:
             "passable_fraction": round(1.0 - (impact_counts.get("IMPASSABLE", 0) / max(1, len(imp))), 3),
         }
 
-    return road_metrics_at(NETWORK, impact_index(sid), sid, lead)
+    return metrics_at_lead(NETWORK, impact_index(sid)[lead])
 
 
-def single_road_timeline(sid: str, road_id: str) -> dict[str, Any]:
+def road_impact_timeline(sid: str, road_id: str) -> dict[str, Any]:
     active = getattr(city_api, "ACTIVE_CITY", "DEMO")
     if active != "DEMO":
         idx = impact_index(sid)
@@ -341,33 +343,49 @@ def single_road_timeline(sid: str, road_id: str) -> dict[str, Any]:
             "scenario_id": sid,
             "road_id": road_id,
             "points": points,
+            "series": points,
             "first_impacted_lead_minutes": next((p["lead_minutes"] for p in points if p["classification"] != "DRY"), None),
             "first_impassable_lead_minutes": next((p["lead_minutes"] for p in points if not p["is_passable"]), None),
         }
 
-    seg = NETWORK.segment(road_id)
+    seg = next((s for s in NETWORK.segments if s.road_id == road_id), None)
+    if seg is None:
+        raise KeyError(f"road {road_id} not found in network")
     pts = [
         impact_index(sid)[lead][road_id]
         for lead in LEADS
         if road_id in impact_index(sid)[lead]
     ]
-    first_impacted = next((p.lead_minutes for p in pts if p.classification != RoadImpactClassification.DRY), None)
-    first_impassable = next((p.lead_minutes for p in pts if not p.is_passable), None)
+    def _cls_val(p):
+        c = getattr(p, "classification", None) or (p.get("classification") if isinstance(p, dict) else None)
+        return getattr(c, "value", str(c))
+
+    def _pass_val(p):
+        return getattr(p, "is_passable", None) if hasattr(p, "is_passable") else (p.get("is_passable", True) if isinstance(p, dict) else True)
+
+    first_impacted = next((getattr(p, "lead_minutes", None) if not isinstance(p, dict) else p.get("lead_minutes") for p in pts if _cls_val(p) not in ("DRY", "RoadImpactClassification.DRY")), None)
+    first_impassable = next((getattr(p, "lead_minutes", None) if not isinstance(p, dict) else p.get("lead_minutes") for p in pts if not _pass_val(p)), None)
+    serialized_pts = [p.to_dict() if hasattr(p, "to_dict") else p for p in pts]
     return {
         "scenario_id": sid,
         "road_id": road_id,
-        "road_name": seg.road_name,
-        "road_class": seg.road_class.value,
+        "road_name": getattr(seg, "name", getattr(seg, "road_name", seg.road_id)),
+        "road_class": seg.road_class.value if hasattr(seg.road_class, "value") else str(seg.road_class),
         "length_m": seg.length_m,
         "baseline_speed_kmh": seg.baseline_speed_kmh,
-        "points": [p.to_dict() for p in pts],
+        "series": serialized_pts,
+        "points": serialized_pts,
         "first_impacted_lead_minutes": first_impacted,
         "first_impassable_lead_minutes": first_impassable,
         "source": seg.source,
         "status": seg.status,
         "policy_version": POLICY.policy_id,
         "policy_fingerprint": POLICY.fingerprint,
+        "labels": ["SYNTHETIC", "SIMULATED", "PROVISIONAL", "NOT FOR OPERATIONAL USE"],
     }
+
+
+single_road_timeline = road_impact_timeline
 
 
 # ---------------------------------------------------------------------------

@@ -373,3 +373,90 @@ class FloodSnapshot(BaseModel):
         if v.tzinfo is None:
             raise ValueError("valid_time must be timezone-aware")
         return v.astimezone(timezone.utc)
+
+
+# --------------------------------------------------------------------------
+# Multi-City Spatial & Pilot Registry
+# --------------------------------------------------------------------------
+
+DEFAULT_CITY = "MUMBAI"
+
+CITY_METADATA: dict[str, dict[str, Any]] = {
+    "MUMBAI": {
+        "city_id": "mumbai",
+        "name": "Mumbai Metropolitan Region",
+        "state": "Maharashtra",
+        "crs": "EPSG:32643",
+        "utm_zone": "43N",
+        "bbox": [72.75, 18.88, 72.98, 19.28],
+        "dem_cells": [825, 1486],
+        "resolution_m": 30.0,
+        "drainage_junctions": 1822,
+        "drainage_conduits": 916,
+        "road_nodes": 3440,
+        "road_edges": 2000,
+        "has_coastal_surge": True,
+        "has_riverine_flood": False,
+        "live_radar_station": "Mumbai (Colaba S-band / Veravali X-band)",
+        "provenance_status": "OPERATIONAL_PRODUCTION",
+    },
+    "VIJAYAWADA": {
+        "city_id": "vijayawada",
+        "name": "Vijayawada Urban Area (Krishna Basin)",
+        "state": "Andhra Pradesh",
+        "crs": "EPSG:32644",
+        "utm_zone": "44N",
+        "bbox": [80.55, 16.45, 80.72, 16.58],
+        "dem_cells": [606, 481],
+        "resolution_m": 30.0,
+        "drainage_junctions": 162,
+        "drainage_conduits": 86,
+        "road_nodes": 1200,
+        "road_edges": 850,
+        "has_coastal_surge": False,
+        "has_riverine_flood": True,
+        "live_radar_station": "Machilipatnam DWR (55km east)",
+        "provenance_status": "OPERATIONAL_PRODUCTION",
+    },
+    "DEMO": {
+        "city_id": "demo",
+        "name": "Synthetic Basin Pilot (M5-M11 Baseline)",
+        "state": "West Bengal",
+        "crs": "EPSG:32645",
+        "utm_zone": "45N",
+        "bbox": [88.35, 22.50, 88.45, 22.60],
+        "dem_cells": [200, 200],
+        "resolution_m": 20.1,
+        "drainage_junctions": 16,
+        "drainage_conduits": 15,
+        "road_nodes": 14,
+        "road_edges": 18,
+        "has_coastal_surge": False,
+        "has_riverine_flood": False,
+        "live_radar_station": "Kolkata Doppler Radar (Simulated)",
+        "provenance_status": "SYNTHETIC_BENCHMARK",
+    },
+}
+
+_active_city_state: str = DEFAULT_CITY
+
+
+def get_active_city() -> str:
+    """Return currently active city key (MUMBAI, VIJAYAWADA, or DEMO)."""
+    import os
+    global _active_city_state
+    env_city = os.getenv("UFNS_ACTIVE_CITY")
+    if env_city and env_city.upper() in CITY_METADATA:
+        return env_city.upper()
+    return _active_city_state
+
+
+def set_active_city(city_key: str) -> str:
+    """Set active city key globally."""
+    global _active_city_state
+    norm = city_key.upper()
+    if norm in CITY_METADATA:
+        _active_city_state = norm
+        return _active_city_state
+    raise ValueError(f"Unknown city key: {city_key}. Available: {list(CITY_METADATA.keys())}")
+

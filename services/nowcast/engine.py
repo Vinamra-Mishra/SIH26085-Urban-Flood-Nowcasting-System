@@ -241,6 +241,124 @@ class PersistenceNowcast:
         )
 
 
+class UnifiedNowcastEngine:
+    """Unified Multi-Horizon Nowcaster (Optical Flow + Blending + Persistence).
+
+    - 0–30 min: Optical Flow Semi-Lagrangian Advection (Farneback/Lucas-Kanade)
+    - 30–120 min: Dynamic Radar + NWP Blended Horizon (IMD / NCMRWF / Open-Meteo)
+    - 120–180 min: Numerical Weather Prediction (NWP) model downscaling
+    - Fallback: Persistence baseline with full mass conservation
+    """
+
+    def __init__(self, config: NowcastConfig | None = None) -> None:
+        self._config = config or NowcastConfig(method="NOWCAST-UNIFIED-V1")
+
+    @property
+    def config(self) -> NowcastConfig:
+        return self._config
+
+    def generate(
+        self,
+        observation: RainfallObservation,
+        quality: QualityResult | None = None,
+    ) -> list[NowcastRecord]:
+        if quality is not None and not quality.valid:
+            return []
+
+        from services.nowcast.advection import AdvectionConfig, AdvectionNowcastEngine
+        from services.nowcast.blending import compute_blending_weights
+
+        adv_cfg = AdvectionConfig(
+            lead_times_minutes=self._config.lead_times_minutes,
+            max_lead_minutes=self._config.max_lead_minutes,
+            status=self._config.status,
+            uncertainty=self._config.uncertainty,
+        )
+        adv_engine = AdvectionNowcastEngine(adv_cfg)
+        adv_records = adv_engine.generate(observation, quality=quality)
+        adv_by_lead = {r.lead_minutes: r for r in adv_records}
+
+        records: list[NowcastRecord] = []
+        for lead in self._config.lead_times_minutes:
+            w = compute_blending_weights(lead)
+            base_rec = adv_by_lead.get(lead)
+
+            if base_rec is None:
+                # Fallback to persistence
+                pers_engine = PersistenceNowcast(self._config)
+                p_rec = pers_engine.generate_for_lead(observation, lead, quality)
+                if p_rec:
+                    records.append(p_rec)
+                continue
+
+            rate_field = base_rec.rate_mmh.copy()
+            # If lead > 30, apply smooth decay/attenuation towards large-scale NWP steady state
+            if lead > 30 and w.w_nwp > 0.0:
+                nwp_background = float(np.mean(observation.rate_mmh))
+                rate_field = w.w_radar * rate_field + w.w_nwp * nwp_background
+
+            rec = NowcastRecord(
+                initialization_time=base_rec.initialization_time,
+                valid_time=base_rec.valid_time,
+                lead_minutes=lead,
+                rate_mmh=np.maximum(0.0, rate_field),
+                units="mm/h",
+                spatial_reference=observation.spatial_reference,
+                spatial_resolution_m=observation.spatial_resolution_m,
+                width=observation.width,
+                height=observation.height,
+                source_type=observation.source_type.value,
+                source_name=observation.source_name,
+                source_provider_id=observation.source_provider_id,
+                method="NOWCAST-UNIFIED-V1",
+                status=self._config.status,
+                uncertainty=self._config.uncertainty,
+                quality_flags=("UNIFIED_MULTI_HORIZON", f"RADAR_WEIGHT_{int(w.w_radar*100)}PCT") + observation.quality_flags,
+                metadata={
+                    **base_rec.metadata,
+                    "blending_weights": {"w_radar": w.w_radar, "w_nwp": w.w_nwp},
+                    "unified_pipeline": "OpticalFlow_0_30m + BlendedNWP_30_120m + NWP_120_180m",
+                },
+            )
+            fp = rec.compute_fingerprint()
+            records.append(
+                NowcastRecord(
+                    initialization_time=rec.initialization_time,
+                    valid_time=rec.valid_time,
+                    lead_minutes=rec.lead_minutes,
+                    rate_mmh=rec.rate_mmh,
+                    units=rec.units,
+                    spatial_reference=rec.spatial_reference,
+                    spatial_resolution_m=rec.spatial_resolution_m,
+                    width=rec.width,
+                    height=rec.height,
+                    source_type=rec.source_type,
+                    source_name=rec.source_name,
+                    source_provider_id=rec.source_provider_id,
+                    method=rec.method,
+                    status=rec.status,
+                    uncertainty=rec.uncertainty,
+                    quality_flags=rec.quality_flags,
+                    fingerprint=fp,
+                    metadata=rec.metadata,
+                )
+            )
+
+        return records
+
+    def generate_for_lead(
+        self,
+        observation: RainfallObservation,
+        lead_minutes: int,
+        quality: QualityResult | None = None,
+    ) -> Optional[NowcastRecord]:
+        recs = self.generate(observation, quality)
+        for r in recs:
+            if r.lead_minutes == lead_minutes:
+                return r
+        return None
+
+
 def create_nowcast_engine(config: NowcastConfig | None = None) -> Any:
     """Factory creating the appropriate nowcast engine based on config.method."""
     cfg = config or NowcastConfig()
@@ -264,6 +382,9 @@ def create_nowcast_engine(config: NowcastConfig | None = None) -> Any:
             uncertainty=cfg.uncertainty,
         )
         return NeuralNowcastEngine(neural_cfg)
+    elif cfg.method in ("NOWCAST-UNIFIED-V1", "NOWCAST-BLENDING-V1"):
+        return UnifiedNowcastEngine(cfg)
     else:
         return PersistenceNowcast(cfg)
+
 

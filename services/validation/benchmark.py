@@ -11,7 +11,7 @@ from typing import Any, Optional
 
 import numpy as np
 
-from apps.api import impacts, store
+from services.scenarios.artifacts import get_depth_grid, load_results
 from services.validation.metrics import (
     calculate_contingency_scores,
     calculate_depth_errors,
@@ -101,8 +101,8 @@ class BenchmarkEngine:
         benchmark = BENCHMARK_CATALOG[clean_bid]
 
         # 1. Fetch simulation and benchmark 2D depth grids
-        sim_grid = np.array(impacts.depth_grid(scenario_id, lead_minutes), dtype=np.float64)
-        ref_grid = np.array(impacts.depth_grid(benchmark.reference_scenario_id, lead_minutes), dtype=np.float64)
+        sim_grid = np.array(get_depth_grid(scenario_id, lead_minutes), dtype=np.float64)
+        ref_grid = np.array(get_depth_grid(benchmark.reference_scenario_id, lead_minutes), dtype=np.float64)
 
         # 2. Compute 1D hydrograph surrogate metrics (along central drain column 67)
         sim_slice = sim_grid[:, 67]
@@ -125,7 +125,8 @@ class BenchmarkEngine:
         depth_errors = calculate_depth_errors(sim_grid, ref_grid)
 
         # 5. Mass continuity check from scenario store
-        sc_res = store.scenario_result(scenario_id)
+        all_results = load_results()
+        sc_res = all_results.get(scenario_id, {})
         ledger = sc_res.get("mass_ledger", {}) if isinstance(sc_res, dict) else {}
         raw_residual = ledger.get("relative_residual", ledger.get("residual_fraction_pct"))
         if raw_residual is not None:
